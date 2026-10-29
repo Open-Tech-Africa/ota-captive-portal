@@ -1,0 +1,107 @@
+// This app's own data. Postgres. Migrations are ours (`prisma migrate dev`).
+// See docs/RADIUS-INTEGRATION.md for why the radius-side schema is separate.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/app-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PackageDuration {
+  HOURLY
+  DAILY
+  WEEKLY
+}
+
+model Package {
+  id                String          @id @default(cuid())
+  name              String
+  duration          PackageDuration
+  durationMinutes   Int
+  priceKes          Int
+  downKbps          Int
+  upKbps            Int
+  radiusGroup       String?
+  bandwidthAttribute String // e.g. "Mikrotik-Rate-Limit", vendor-specific — see docs/RADIUS-INTEGRATION.md
+  bandwidthValue    String
+  isActive          Boolean         @default(true)
+  sortOrder         Int             @default(0)
+  sessions          PortalSession[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+enum SessionStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  PROVISIONED
+  FAILED
+  CANCELLED
+  TIMEOUT
+  EXPIRED
+}
+
+model PortalSession {
+  id                 String        @id @default(cuid())
+  packageId          String
+  package            Package       @relation(fields: [packageId], references: [id])
+  phoneNumber        String
+  clientMac          String?
+  clientIp           String?
+  zoneId             String?
+  redirectUrl        String?
+  status             SessionStatus @default(PENDING)
+  radiusUsername     String?
+  // Set once, right after provisioning; cleared the first time /api/sessions/:id/status serves it
+  // to the browser for the auto-login form. Never logged, never kept around after that single read.
+  radiusPasswordOneTime String?
+  expiresAt          DateTime?
+  transaction        MpesaTransaction?
+  provisionLogs      RadiusProvisionLog[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([status])
+  @@index([radiusUsername])
+}
+
+enum MpesaStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+model MpesaTransaction {
+  id                 String        @id @default(cuid())
+  sessionId          String        @unique
+  session            PortalSession @relation(fields: [sessionId], references: [id])
+  merchantRequestId  String
+  checkoutRequestId  String        @unique
+  amount             Int
+  phoneNumber        String
+  status             MpesaStatus   @default(INITIATED)
+  resultCode         Int?
+  resultDesc         String?
+  mpesaReceiptNumber String?
+  transactionDate    DateTime?
+  rawCallback        Json?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model RadiusProvisionLog {
+  id        String        @id @default(cuid())
+  sessionId String
+  session   PortalSession @relation(fields: [sessionId], references: [id])
+  action    String // "PROVISION" | "CLEANUP"
+  success   Boolean
+  error     String?
+  createdAt DateTime      @default(now())
+}

@@ -1,0 +1,54 @@
+# Used when this app runs on the same host as FreeRADIUS/daloRADIUS (e.g. the "wisp-server-test"
+# LXC clone) — see docs/ARCHITECTURE.md's "co-locate on-prem" option and docs/RADIUS-INTEGRATION.md.
+# `web` uses host networking so it can reach MariaDB on the LXC's own 127.0.0.1:3306 without any
+# bind-address change there, and so the splash page is directly reachable on the hotspot VLAN
+# interface (eth0) exactly like it would be in production.
+#
+# Run with: docker compose -f docker-compose.lxc.yml up -d --build
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal_dev_password
+      POSTGRES_DB: wisp_portal
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d wisp_portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      target: dev
+    network_mode: host
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=postgres://portal:portal_dev_password@localhost:5435/wisp_portal
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+  # Dev-only: gives `web` a public HTTPS URL so Safaricom's STK Push callback can actually reach
+  # it (Safaricom rejects http/localhost callback URLs outright — see docs/MPESA-INTEGRATION.md).
+  # Quick Cloudflare Tunnel, no account needed. Check `docker compose logs tunnel` for the
+  # generated https://*.trycloudflare.com URL, then put it in MPESA_CALLBACK_URL and recreate web.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://localhost:3000
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  db-data:

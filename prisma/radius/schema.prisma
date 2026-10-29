@@ -1,0 +1,112 @@
+// The FreeRADIUS / daloRADIUS database. We do NOT own this schema — daloRADIUS's own
+// SQL files (fr3-mariadb-freeradius.sql, mariadb-daloradius.sql, migrations/*) do.
+//
+// Captured by hand against the real schema on the "wisp-server-test" clone (LXC 102, a full
+// clone of the production daloRADIUS box, LXC 100) on 2026-10-29 — column types/nullability here
+// match `describe` output from that box, not a guess. Only the tables this app reads or writes
+// are modeled (see docs/RADIUS-INTEGRATION.md); daloRADIUS's own billing/userinfo tables etc.
+// exist in the real database but are intentionally left out here.
+//
+// Once pointed at a real RADIUS_DATABASE_URL, keep this in sync by running:
+//
+//   pnpm radius:pull
+//
+// Never run `prisma migrate` against this datasource.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/radius-client"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("RADIUS_DATABASE_URL")
+}
+
+/// Per-user auth attributes (we write Cleartext-Password rows here after payment).
+model radcheck {
+  id        Int    @id @default(autoincrement()) @db.UnsignedInt
+  username  String @default("") @db.VarChar(64)
+  attribute String @default("") @db.VarChar(64)
+  op        String @default("==") @db.Char(2)
+  value     String @default("") @db.VarChar(253)
+
+  @@index([username])
+}
+
+/// Per-user reply attributes returned on Access-Accept (Session-Timeout, bandwidth caps).
+model radreply {
+  id        Int    @id @default(autoincrement()) @db.UnsignedInt
+  username  String @default("") @db.VarChar(64)
+  attribute String @default("") @db.VarChar(64)
+  op        String @default("=") @db.Char(2)
+  value     String @default("") @db.VarChar(253)
+
+  @@index([username])
+}
+
+/// Optional group membership, used so daloRADIUS reports can bucket sessions by package.
+model radusergroup {
+  id        Int    @id @default(autoincrement()) @db.UnsignedInt
+  username  String @default("") @db.VarChar(64)
+  groupname String @default("") @db.VarChar(64)
+  priority  Int    @default(1)
+
+  @@index([username])
+}
+
+/// Accounting rows FreeRADIUS writes when the OPNsense captive portal zone has RADIUS
+/// accounting enabled. Read-only from this app — see docs/RADIUS-INTEGRATION.md#radacct-and-package-expiry.
+model radacct {
+  radacctid            BigInt    @id @default(autoincrement())
+  acctsessionid        String    @db.VarChar(64)
+  acctuniqueid         String    @unique @db.VarChar(32)
+  username             String    @default("") @db.VarChar(64)
+  realm                String?   @db.VarChar(64)
+  nasipaddress         String    @db.VarChar(15)
+  nasportid            String?   @db.VarChar(32)
+  nasporttype          String?   @db.VarChar(32)
+  acctstarttime        DateTime?
+  acctupdatetime       DateTime?
+  acctstoptime         DateTime?
+  acctinterval         Int?
+  acctsessiontime      Int?      @db.UnsignedInt
+  acctauthentic        String?   @db.VarChar(32)
+  connectinfo_start    String?   @db.VarChar(128)
+  connectinfo_stop     String?   @db.VarChar(128)
+  acctinputoctets      BigInt?
+  acctoutputoctets     BigInt?
+  calledstationid      String    @db.VarChar(50)
+  callingstationid     String    @db.VarChar(50)
+  acctterminatecause   String    @default("") @db.VarChar(32)
+  servicetype          String?   @db.VarChar(32)
+  framedprotocol       String?   @db.VarChar(32)
+  framedipaddress      String    @default("") @db.VarChar(15)
+  framedipv6address    String    @default("") @db.VarChar(45)
+  framedipv6prefix     String    @default("") @db.VarChar(45)
+  framedinterfaceid    String    @default("") @db.VarChar(44)
+  delegatedipv6prefix  String    @default("") @db.VarChar(45)
+  class                String?   @db.VarChar(64)
+
+  @@index([username])
+  @@index([nasipaddress])
+  @@index([acctsessionid])
+  @@index([acctstarttime])
+  @@index([acctstoptime])
+}
+
+/// RADIUS clients (NAS entries) — OPNsense's portal interface is registered here once,
+/// by whoever wires up the network. Read-only from this app.
+model nas {
+  id          Int     @id @default(autoincrement())
+  nasname     String  @db.VarChar(128)
+  shortname   String? @db.VarChar(32)
+  type        String? @default("other") @db.VarChar(30)
+  ports       Int?
+  secret      String  @default("secret") @db.VarChar(60)
+  server      String? @db.VarChar(64)
+  community   String? @db.VarChar(50)
+  description String? @default("RADIUS Client") @db.VarChar(200)
+
+  @@index([nasname])
+}

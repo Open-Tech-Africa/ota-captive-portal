@@ -1,0 +1,59 @@
+services:
+  # This app's own database. The FreeRADIUS/daloRADIUS MariaDB is a separate, real box — see
+  # docs/RADIUS-INTEGRATION.md — and is never stood up by this compose file.
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal_dev_password
+      POSTGRES_DB: wisp_portal
+    ports:
+      # 5435 on the host: 5432/5434 are commonly taken by other local Postgres instances
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d wisp_portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      target: dev
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - WATCHPACK_POLLING=true
+      # inside the compose network the database host is `db`, not localhost
+      - DATABASE_URL=postgres://portal:portal_dev_password@db:5432/wisp_portal
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+  web-prod:
+    profiles: ["prod"]
+    build:
+      context: .
+      target: runner
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DATABASE_URL=postgres://portal:portal_dev_password@db:5432/wisp_portal
+
+volumes:
+  db-data:

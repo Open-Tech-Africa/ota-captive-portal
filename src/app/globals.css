@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-ink-950: #06090d;
+  --color-ink-900: #0b1016;
+  --color-steel-900: #121922;
+  --color-steel-800: #1b2531;
+  --color-steel-700: #273344;
+  --color-steel-400: #7c8a9c;
+  --color-steel-300: #a7b4c3;
+  --color-steel-200: #d2dae3;
+  --color-signal: #22c7b8;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ink-950);
+  color: var(--color-steel-200);
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    animation: none !important;
+  }
+}
+
+/* shadcn/ui semantic tokens, mapped onto the hotspot palette (dark only). */
+@theme inline {
+  --font-heading: var(--font-display);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  --background: var(--color-ink-950);
+  --foreground: var(--color-steel-200);
+  --card: var(--color-ink-900);
+  --card-foreground: var(--color-steel-200);
+  --popover: var(--color-steel-900);
+  --popover-foreground: var(--color-steel-200);
+  --primary: var(--color-signal);
+  --primary-foreground: var(--color-ink-950);
+  --secondary: var(--color-steel-800);
+  --secondary-foreground: var(--color-steel-200);
+  --muted: var(--color-steel-900);
+  --muted-foreground: var(--color-steel-300);
+  --accent: var(--color-steel-800);
+  --accent-foreground: var(--color-steel-200);
+  --destructive: #ef2b2d;
+  --border: var(--color-steel-700);
+  --input: var(--color-steel-700);
+  --ring: var(--color-signal);
+  --radius: 0.6rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+}

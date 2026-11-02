@@ -35,6 +35,12 @@ ENV DATABASE_URL=postgres://build:build@localhost:5432/build \
     OPNSENSE_CAPTIVE_PORTAL_BASE_URL=https://localhost:8003 \
     OPNSENSE_DEFAULT_ZONE_ID=build \
     CRON_SECRET=build-time-placeholder-secret-0123456789
+# Explicit, not relying on `deps`' postinstall: that stage has no RADIUS_DATABASE_URL (no .env
+# copied in yet at that point), so `prisma generate` for the radius schema can fail there without
+# failing `pnpm install` itself — silently leaving `src/generated/radius-client` missing until
+# Next's build tries to bundle it and fails. Regenerating here, with the placeholders above
+# already in scope, guarantees both clients exist before `pnpm build` runs.
+RUN pnpm db:generate && pnpm radius:generate
 RUN pnpm build
 
 FROM node:22-alpine AS runner

@@ -22,10 +22,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # Production build (`target: runner`), not `dev` — this service is reachable from the public
+  # internet via the `tunnel` service below. Next.js dev mode prints full stack traces with source
+  # code on any unhandled error, which we've already seen leak once; a production build doesn't.
+  # No bind-mount here either — the image is self-contained, so code changes need a rebuild
+  # (`docker compose up -d --build web`), not just a file sync.
   web:
     build:
       context: .
-      target: dev
+      target: runner
     network_mode: host
     depends_on:
       db:
@@ -35,20 +40,20 @@ services:
         required: false
     environment:
       - DATABASE_URL=postgres://portal:portal_dev_password@localhost:5435/wisp_portal
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
 
-  # Dev-only: gives `web` a public HTTPS URL so Safaricom's STK Push callback can actually reach
-  # it (Safaricom rejects http/localhost callback URLs outright — see docs/MPESA-INTEGRATION.md).
-  # Quick Cloudflare Tunnel, no account needed. Check `docker compose logs tunnel` for the
-  # generated https://*.trycloudflare.com URL, then put it in MPESA_CALLBACK_URL and recreate web.
+  # Gives `web` a stable public HTTPS URL (a named Cloudflare Tunnel, routed to this deployment's
+  # own domain) so Safaricom's STK Push callback can actually reach it — Safaricom rejects
+  # http/localhost callback URLs outright, see docs/MPESA-INTEGRATION.md. The tunnel's own
+  # credentials/config live in ./.cloudflared on the server (deployment-specific, gitignored like
+  # .env — never synced from a local checkout; set up once via `cloudflared tunnel login/create/
+  # route dns`, documented in docs/INSTALL.md).
   tunnel:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate --url http://localhost:3000
+    command: tunnel --no-autoupdate run
     network_mode: host
     restart: unless-stopped
+    volumes:
+      - ./.cloudflared:/home/nonroot/.cloudflared:ro
 
 volumes:
   db-data:

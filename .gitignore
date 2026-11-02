@@ -45,3 +45,7 @@ next-env.d.ts
 
 # generated Prisma clients
 /src/generated
+
+# Cloudflare Tunnel credentials (cert.pem, <tunnel-id>.json, config.yml) — deployment-specific,
+# never checked out from git; set up per instance per docs/INSTALL.md
+/.cloudflared

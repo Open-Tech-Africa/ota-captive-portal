@@ -97,9 +97,54 @@ Fill in at minimum:
 - `MPESA_*` — real (sandbox is fine to start) Safaricom Daraja credentials; see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md)
 - `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` / `OPNSENSE_DEFAULT_ZONE_ID` — see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)
 
-`chmod 600 .env` — it holds real credentials.
+`chmod 600 .env` — it holds real credentials. `APP_BASE_URL`/`MPESA_CALLBACK_URL` need the tunnel domain from the next step, so come back and fill those in after it.
 
-## 7. Build and start
+## 7. Set up a public HTTPS tunnel for M-Pesa's callback
+
+Safaricom's STK Push callback needs a real, publicly reachable HTTPS URL — `localhost` or a private IP is rejected outright (`400.002.02 Invalid CallBackURL`). A **named Cloudflare Tunnel** on a domain you control in Cloudflare is the production-grade way to do this (not the ephemeral `trycloudflare.com` quick tunnel, which is fine for a one-off test but gets a new random URL every restart and has no access control in front of it).
+
+This only needs to be done **once per instance** — the tunnel and its DNS record persist. All of it runs via the `cloudflare/cloudflared` Docker image already used by `docker-compose.lxc.yml`; nothing extra to install.
+
+```bash
+mkdir -p .cloudflared
+
+# 1. Authenticate to your Cloudflare account — prints a URL, open it in a browser and approve
+#    against the Cloudflare account that manages your domain, then pick that domain/zone.
+#    Click it quickly: the login session can expire within a couple of minutes.
+docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest tunnel login
+
+# 2. Create the named tunnel (choose any name; "wisp-portal" here)
+docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest tunnel create wisp-portal
+
+# 3. Route your subdomain to it — adds the CNAME in your Cloudflare DNS automatically
+docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest \
+  tunnel route dns wisp-portal <your-subdomain>.yourdomain.com
+```
+
+Then write `.cloudflared/config.yml` (the tunnel ID/credentials filename come from step 2's output):
+
+```yaml
+tunnel: <tunnel-id>
+credentials-file: /home/nonroot/.cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: <your-subdomain>.yourdomain.com
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+`docker-compose.lxc.yml`'s `tunnel` service already expects this directory and runs `tunnel --no-autoupdate run` (the named-tunnel form) — nothing to change there. Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§6) to `https://<your-subdomain>.yourdomain.com` (and `.../api/mpesa/callback` for the latter).
+
+**Permissions gotcha on an unprivileged Proxmox LXC**: if step 1 fails with `permission denied` writing `cert.pem`, it's a UID-mapping issue, not a Cloudflare problem. The `cloudflared` image runs as a non-root user with UID `65532`, but on the LXC's host filesystem that needs to be the *shifted* UID — `100000 + 65532 = 165532` for the default subuid range — not `65532` directly:
+
+```bash
+# Run on the Proxmox host, against the host-side path of the mounted directory
+chown -R 165532:165532 /<storage>/subvol-<vmid>-disk-0/root/wisp-captive-portal/.cloudflared
+```
+
+`.cloudflared/` is gitignored, same treatment as `.env` — it holds real credentials and is never checked out from a fresh clone; set it up fresh on each new instance.
+
+## 8. Build and start
 
 Topology A (same host as the RADIUS DB):
 
@@ -113,7 +158,7 @@ Topology B (different host):
 docker compose up -d --build
 ```
 
-## 8. Run migrations and seed packages
+## 9. Run migrations and seed packages
 
 ```bash
 docker compose -f docker-compose.lxc.yml exec -T web pnpm db:migrate --name init
@@ -122,7 +167,7 @@ docker compose -f docker-compose.lxc.yml exec -T web pnpm db:seed
 
 (Drop `--name init` after the first instance — that flag is only for naming a brand-new migration; subsequent instances just need `pnpm db:migrate` to apply the migrations already committed to the repo, not create new ones.)
 
-## 9. Verify
+## 10. Verify
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect 200
@@ -131,7 +176,7 @@ docker compose -f docker-compose.lxc.yml logs web --tail 40
 
 Then confirm it's reachable from wherever subscribers actually connect (e.g. the hotspot VLAN interface's IP, not just `localhost`).
 
-## 10. Wire up OPNsense
+## 11. Wire up OPNsense
 
 This app being up doesn't do anything until OPNsense redirects unauthenticated clients to it and is configured to authenticate against the same FreeRADIUS this instance writes to. Follow [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md).
 

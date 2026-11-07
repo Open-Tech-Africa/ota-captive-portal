@@ -97,6 +97,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ sessionId: session.id })
   } catch (error) {
+    console.error(`[sessions] ${env.PAYMENT_PROVIDER} charge initiation failed`, error)
     await appDb.portalSession.update({ where: { id: session.id }, data: { status: "FAILED" } })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to start payment" },

@@ -36,9 +36,11 @@ Content-Type: application/json
 ```
 
 - `email` is required by Paystack on every charge even though this app has no customer accounts — [`buildPlaceholderEmail`](../src/lib/paystack/client.ts) builds a deterministic, never-mailed placeholder (`<phone>@wisp-portal.invalid`, using the `.invalid` TLD reserved by RFC 2606 for exactly this).
-- `amount` is in the currency's subunit (cents) — same convention as Daraja's shillings-only `Amount`, except Paystack wants the *cents* value as a string. `KES 50` → `"5000"`.
-- `reference` should be the `PortalSession.id`, same role as Daraja's `AccountReference` — lets the webhook/verify fallback match back without depending solely on whatever reference Paystack might otherwise generate.
-- Response (`data.status`) starts in an intermediate state while the prompt is outstanding — community reports describe `"pay_offline"`, but verify this against a live sandbox call. See [`isTerminalPaystackStatus`](../src/lib/paystack/status.ts) for the full set this app treats as non-final.
+- `amount` is in the currency's subunit (cents) — same convention as Daraja's shillings-only `Amount`, except Paystack wants the *cents* value as a string. `KES 50` → `"5000"`. **Confirmed against a live charge.**
+- `reference` should be the `PortalSession.id`, same role as Daraja's `AccountReference` — lets the webhook/verify fallback match back without depending solely on whatever reference Paystack might otherwise generate. **Confirmed**: the webhook's `data.reference` comes back exactly as sent.
+- `mobile_money.phone` **must be in international `+254...` form** — Paystack's own docs show two conventions on the same page (`254...` no plus is only for the separate `mpesa_offline` variant; plain `mpesa` wants `+254...`). Sending the no-plus form this app normally uses internally (RADIUS username, session storage, etc.) gets a fast `400 "Invalid phone number format"`. Convert only at the point of building this request — [`initiateMpesaCharge`](../src/lib/paystack/client.ts) prepends the `+`.
+- `email`: Paystack's validator checks the domain against a real-TLD allowlist, so a placeholder using the RFC 2606 `.invalid` TLD is rejected outright (`400 "\"email\" must be a valid email"`). [`buildPlaceholderEmail`](../src/lib/paystack/client.ts) instead uses a subdomain of whatever `APP_BASE_URL` is on — a domain this deployment's operator actually owns.
+- Response (`data.status`) starts in an intermediate state while the prompt is outstanding. **Confirmed against a live charge**: a successful STK push resolves with `gateway_response: "Approved"` on the `charge.success` webhook. See [`isTerminalPaystackStatus`](../src/lib/paystack/status.ts) for the full set this app treats as non-final (not yet individually confirmed against a live decline/cancel/timeout).
 
 Store `reference` (Paystack's, which should match what you sent) on the `PaystackTransaction` row immediately, status `INITIATED`.
 
@@ -85,8 +87,12 @@ A non-terminal `data.status` (see [`isTerminalPaystackStatus`](../src/lib/paysta
 
 Same `PortalSession.status` machine as the Daraja path — `PENDING → AWAITING_PAYMENT → (PAID → PROVISIONED) | FAILED | CANCELLED | TIMEOUT` — the UI doesn't need to know or care which provider is active.
 
-## Open items to confirm against a live sandbox before go-live
+## Confirmed against a live charge (2026-11-07)
 
-- The exact `data.status` value(s) Paystack returns for a Kenya M-Pesa charge while the STK prompt is outstanding, and whether any mobile-money providers on the Kenya corridor ever need a follow-up OTP-submission call (some Paystack mobile-money providers in other countries do; Safaricom's own STK push does not, so this app currently assumes Kenya M-Pesa via Paystack behaves the same way).
-- Whether `charge.success`'s `data` object includes a `customer`/`phone` field in practice, and the exact shape of `gateway_response`/`paid_at` for a mobile money (not card) charge.
-- Confirm `amount` subunit convention for KES specifically — assumed cents (×100) by analogy with NGN kobo, not shown as a worked example in Paystack's docs.
+A real KES charge via a subscriber's own phone resolved end-to-end: `charge.success` webhook received, `PaystackTransaction.status` → `SUCCESS` with `gatewayResponse: "Approved"`, `PortalSession` → `PAID` → `PROVISIONED`, RADIUS `radcheck`/`radreply` rows written correctly. The `amount`-in-cents and `+254...` phone conventions above were both debugged against this live attempt (see git history on this file/`client.ts` for the exact errors Paystack returned before each fix).
+
+## Still open — not yet confirmed against a live decline/cancel/timeout
+
+- The exact `data.status` value(s) for a *failed*, *cancelled*, or *timed-out* STK prompt (only the success path has been exercised so far), and whether `mapPaystackStatus`'s guesses (`"reversed"`, `"abandoned"`, `"timeout"`) match what Paystack actually sends.
+- Whether any mobile-money providers on the Kenya corridor ever need a follow-up OTP-submission call (some Paystack mobile-money providers in other countries do; Safaricom's own STK push does not, and the one successful charge so far didn't need one, but this isn't confirmed for every case).
+- Whether `charge.success`'s `data` object includes a `customer`/`phone` field in practice (not inspected on the one confirmed payload yet).

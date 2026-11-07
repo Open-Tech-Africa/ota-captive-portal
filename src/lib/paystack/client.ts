@@ -32,7 +32,11 @@ export async function initiateMpesaCharge(
       email: request.email,
       amount: String(request.amountKes * SUBUNIT_MULTIPLIER),
       reference: request.accountReference,
-      mobile_money: { phone: request.phoneNumber, provider: "mpesa" },
+      // Paystack's own docs show two conventions for Kenya M-Pesa phone numbers on the same page —
+      // "254..." (no plus) is only for the separate mpesa_offline variant; plain "mpesa" wants the
+      // international "+254..." form. Our internal normalized format (used for RADIUS username,
+      // session storage, etc.) stays "254..." — only this outgoing request gets the "+" prepended.
+      mobile_money: { phone: `+${request.phoneNumber}`, provider: "mpesa" },
     }),
   })
   if (!response.ok) {
@@ -54,7 +58,10 @@ export async function verifyTransaction(reference: string): Promise<VerifyTransa
 }
 
 /** This app has no customer accounts/emails, but Paystack requires one on every charge — a
- * deterministic placeholder tied to the phone number, never actually mailed, is good enough. */
+ * deterministic placeholder tied to the phone number, never actually mailed, is good enough.
+ * Not `.invalid` (RFC 2606's reserved placeholder TLD): Paystack's validator checks against a
+ * real-TLD allowlist and rejects it outright ("\"email\" must be a valid email"), so this uses a
+ * subdomain of whatever domain APP_BASE_URL is on instead — this deployment's operator already owns it. */
 export function buildPlaceholderEmail(phoneNumber: string): string {
-  return `${phoneNumber}@wisp-portal.invalid`
+  return `${phoneNumber}@wisp-portal.${new URL(env.APP_BASE_URL).hostname}`
 }

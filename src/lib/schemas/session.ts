@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { phoneNumberSchema } from "@/lib/schemas/phone"
+import { optionalEmailSchema } from "@/lib/schemas/email"
 
 /**
  * Submitted when a subscriber picks a package and enters their M-Pesa number. zoneId/clientIp/
@@ -9,6 +10,8 @@ import { phoneNumberSchema } from "@/lib/schemas/phone"
 export const createSessionSchema = z.object({
   packageId: z.string().min(1, "Choose a package"),
   phoneNumber: phoneNumberSchema,
+  /** Optional — falls back to a generated placeholder for providers that require one (Paystack). */
+  email: optionalEmailSchema,
   zoneId: z.string().nullish(),
   clientIp: z.string().nullish(),
   clientMac: z.string().nullish(),

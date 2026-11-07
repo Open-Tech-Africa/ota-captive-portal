@@ -51,6 +51,10 @@ model PortalSession {
   packageId          String
   package            Package       @relation(fields: [packageId], references: [id])
   phoneNumber        String
+  // Optional — customer-supplied. Not required for any provider, but kept for receipts/support
+  // lookups; falls back to a generated placeholder address at the point a provider requires one
+  // (Paystack's Charge API) rather than being defaulted here.
+  email              String?
   clientMac          String?
   clientIp           String?
   zoneId             String?

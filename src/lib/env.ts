@@ -29,6 +29,10 @@ const serverEnvSchema = z
     RADIUS_CLEANUP_GRACE_MINUTES: z.coerce.number().int().positive().default(10),
     // Required by POST /api/radius-cleanup to authorize the external scheduler that triggers it.
     CRON_SECRET: z.string().min(16, "Generate one with: openssl rand -base64 32"),
+
+    // Gates /admin — a single shared staff password for now, not per-user accounts. See
+    // docs/ADMIN.md for why, and what replaces this later.
+    ADMIN_PASSWORD: z.string().min(8, "Generate one with: openssl rand -base64 18"),
   })
   .superRefine((value, ctx) => {
     if (value.PAYMENT_PROVIDER === "mpesa") {

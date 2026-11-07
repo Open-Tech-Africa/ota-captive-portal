@@ -107,6 +107,9 @@ enum PaystackStatus {
   FAILED
   CANCELLED
   TIMEOUT
+  // Set by a staff-initiated refund (see docs/ADMIN.md) — never set by the webhook/verify-fallback
+  // result-application logic, which only ever sets a transaction to a terminal non-refund status once.
+  REFUNDED
 }
 
 // Mirrors MpesaTransaction's shape (see docs/RADIUS-INTEGRATION.md's "two schemas" philosophy for

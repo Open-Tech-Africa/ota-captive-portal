@@ -10,6 +10,7 @@ Full detail lives in `docs/`:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — end-to-end flow, components, sequence diagram
 - [`docs/MPESA-INTEGRATION.md`](docs/MPESA-INTEGRATION.md) — Daraja STK Push integration
 - [`docs/PAYSTACK-INTEGRATION.md`](docs/PAYSTACK-INTEGRATION.md) — Paystack as an alternative STK Push rail (picked via `PAYMENT_PROVIDER`)
+- [`docs/ADMIN.md`](docs/ADMIN.md) — `/admin` staff subscriber lookup (payments + RADIUS usage, refunds) and its deliberately minimal auth
 - [`docs/RADIUS-INTEGRATION.md`](docs/RADIUS-INTEGRATION.md) — how the app shares the FreeRADIUS/daloRADIUS database and provisions access
 - [`docs/OPNSENSE-SETUP.md`](docs/OPNSENSE-SETUP.md) — OPNsense captive portal + FreeRADIUS wiring
 

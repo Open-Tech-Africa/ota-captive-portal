@@ -55,3 +55,17 @@ export const verifyTransactionResponseSchema = z.object({
 })
 
 export type VerifyTransactionResponse = z.infer<typeof verifyTransactionResponseSchema>
+
+/** `POST /refund` response. Paystack's own docs show inconsistent casing for createdAt/updatedAt
+ * across endpoints — kept loose here since this app only reads `status` and `reference`. */
+export const refundResponseSchema = z.object({
+  status: z.boolean(),
+  message: z.string(),
+  data: z.object({
+    reference: z.string(),
+    status: z.string(),
+    amount: z.number().optional(),
+  }),
+})
+
+export type RefundResponse = z.infer<typeof refundResponseSchema>

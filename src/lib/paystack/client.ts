@@ -1,7 +1,15 @@
 import "server-only"
 import { env } from "@/lib/env"
-import { chargeResponseSchema, verifyTransactionResponseSchema } from "@/lib/schemas/paystack"
-import type { ChargeResponse, VerifyTransactionResponse } from "@/lib/schemas/paystack"
+import {
+  chargeResponseSchema,
+  verifyTransactionResponseSchema,
+  refundResponseSchema,
+} from "@/lib/schemas/paystack"
+import type {
+  ChargeResponse,
+  VerifyTransactionResponse,
+  RefundResponse,
+} from "@/lib/schemas/paystack"
 
 const PAYSTACK_BASE_URL = "https://api.paystack.co"
 
@@ -55,6 +63,29 @@ export async function verifyTransaction(reference: string): Promise<VerifyTransa
     throw new Error(`Paystack verify request failed: ${response.status} ${await response.text()}`)
   }
   return verifyTransactionResponseSchema.parse(await response.json())
+}
+
+/** Issues a refund for a transaction — see docs/ADMIN.md. Paystack queues refunds for processing
+ * rather than completing them synchronously; `data.status` starts `"pending"`. */
+export async function refundTransaction(
+  reference: string,
+  reason?: string,
+): Promise<RefundResponse> {
+  const response = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      transaction: reference,
+      ...(reason ? { merchant_note: reason } : {}),
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Paystack refund request failed: ${response.status} ${await response.text()}`)
+  }
+  return refundResponseSchema.parse(await response.json())
 }
 
 /** This app has no customer accounts/emails, but Paystack requires one on every charge — a

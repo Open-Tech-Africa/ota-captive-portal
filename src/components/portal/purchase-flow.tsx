@@ -10,6 +10,7 @@ import { PackageCard } from "@/components/portal/package-card"
 import { PoweredByMpesa } from "@/components/portal/powered-by-mpesa"
 import { readSavedPhoneNumber, saveSavedPhoneNumber } from "@/lib/saved-phone-number"
 import { phoneNumberSchema } from "@/lib/schemas/phone"
+import { optionalEmailSchema } from "@/lib/schemas/email"
 import { sessionStatusResponseSchema } from "@/lib/schemas/session"
 import type { PublicPackage } from "@/lib/schemas/package"
 
@@ -44,6 +45,8 @@ export function PurchaseFlow({
   const [selectedId, setSelectedId] = useState<string | null>(packages[0]?.id ?? null)
   const [phoneNumber, setPhoneNumber] = useState("")
   const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [email, setEmail] = useState("")
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>(STATUS_COPY.PENDING)
@@ -73,7 +76,14 @@ export function PurchaseFlow({
     }
     if (!selectedPackage) return
 
+    const parsedEmail = optionalEmailSchema.safeParse(email)
+    if (!parsedEmail.success) {
+      setEmailError(parsedEmail.error.issues[0]?.message ?? "Enter a valid email")
+      return
+    }
+
     setPhoneError(null)
+    setEmailError(null)
     saveSavedPhoneNumber(phoneNumber)
     setSubmitting(true)
     try {
@@ -83,6 +93,7 @@ export function PurchaseFlow({
         body: JSON.stringify({
           packageId: selectedPackage.id,
           phoneNumber: parsedPhone.data,
+          email: parsedEmail.data,
           zoneId,
           clientIp,
           redirectUrl,
@@ -191,6 +202,19 @@ export function PurchaseFlow({
             aria-invalid={Boolean(phoneError)}
           />
           {phoneError ? <p className="text-destructive text-sm">{phoneError}</p> : null}
+
+          <Label htmlFor="email">Email (optional)</Label>
+          <Input
+            id="email"
+            type="email"
+            inputMode="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            aria-invalid={Boolean(emailError)}
+          />
+          {emailError ? <p className="text-destructive text-sm">{emailError}</p> : null}
+
           <Button onClick={startPayment} disabled={submitting} size="lg">
             {submitting ? "Sending…" : `Pay KES ${selectedPackage.priceKes} & connect`}
           </Button>

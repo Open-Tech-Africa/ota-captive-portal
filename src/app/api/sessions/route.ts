@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (!body.success) {
     return NextResponse.json({ error: body.error.flatten() }, { status: 400 })
   }
-  const { packageId, phoneNumber, zoneId, clientIp, clientMac, redirectUrl } = body.data
+  const { packageId, phoneNumber, email, zoneId, clientIp, clientMac, redirectUrl } = body.data
 
   const ip = getClientIp(request)
   const withinIpLimit = checkRateLimit(`ip:${ip}`, {
@@ -42,7 +42,16 @@ export async function POST(request: Request) {
   }
 
   const session = await appDb.portalSession.create({
-    data: { packageId, phoneNumber, zoneId, clientIp, clientMac, redirectUrl, status: "PENDING" },
+    data: {
+      packageId,
+      phoneNumber,
+      email,
+      zoneId,
+      clientIp,
+      clientMac,
+      redirectUrl,
+      status: "PENDING",
+    },
   })
 
   try {
@@ -50,7 +59,7 @@ export async function POST(request: Request) {
       const chargeResponse = await initiateMpesaCharge({
         phoneNumber,
         amountKes: pkg.priceKes,
-        email: buildPlaceholderEmail(phoneNumber),
+        email: email ?? buildPlaceholderEmail(phoneNumber),
         accountReference: session.id,
       })
 

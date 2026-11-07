@@ -4,8 +4,16 @@ import { env } from "@/lib/env"
 import { buildCaptivePortalLogonFields } from "@/lib/opnsense/logon"
 import { queryStkPushStatus } from "@/lib/mpesa/client"
 import { applyStkResult } from "@/lib/mpesa/apply-stk-result"
+import { verifyTransaction } from "@/lib/paystack/client"
+import { applyPaystackResult } from "@/lib/paystack/apply-charge-result"
+import { isTerminalPaystackStatus } from "@/lib/paystack/status"
 import type { SessionStatusResponse } from "@/lib/schemas/session"
-import type { MpesaTransaction, Package, PortalSession } from "@/generated/app-client"
+import type {
+  MpesaTransaction,
+  PaystackTransaction,
+  Package,
+  PortalSession,
+} from "@/generated/app-client"
 
 // Give Safaricom's own callback a head start before we proactively ask — most transactions
 // resolve well within this window, and we'd rather not double up on API calls for every poll tick.
@@ -23,23 +31,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   let session = await appDb.portalSession.findUnique({
     where: { id },
-    include: { transaction: true, package: true },
+    include: { transaction: true, paystackTransaction: true, package: true },
   })
   if (!session) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 })
   }
 
-  if (
-    session.status === "AWAITING_PAYMENT" &&
-    session.transaction &&
-    session.transaction.status === "INITIATED" &&
-    Date.now() - session.transaction.createdAt.getTime() > QUERY_FALLBACK_AFTER_MS
-  ) {
-    await tryResolveViaQueryFallback(session, session.transaction)
-    // The fallback may have just changed status/radiusPasswordOneTime — reload before responding.
+  if (session.status === "AWAITING_PAYMENT") {
+    const fallbackDue = (createdAt: Date) =>
+      Date.now() - createdAt.getTime() > QUERY_FALLBACK_AFTER_MS
+
+    // A session's provider is fixed at creation time by which transaction relation got populated —
+    // branch on that, not the current env.PAYMENT_PROVIDER, so a provider switch never strands
+    // sessions started under the previous one.
+    if (session.transaction?.status === "INITIATED" && fallbackDue(session.transaction.createdAt)) {
+      await tryResolveViaMpesaQueryFallback(session, session.transaction)
+    } else if (
+      session.paystackTransaction?.status === "INITIATED" &&
+      fallbackDue(session.paystackTransaction.createdAt)
+    ) {
+      await tryResolveViaPaystackVerifyFallback(session, session.paystackTransaction)
+    }
+
+    // Either fallback may have just changed status/radiusPasswordOneTime — reload before responding.
     session = await appDb.portalSession.findUnique({
       where: { id },
-      include: { transaction: true, package: true },
+      include: { transaction: true, paystackTransaction: true, package: true },
     })
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 })
@@ -70,7 +87,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const response: SessionStatusResponse = {
     id: session.id,
     status: session.status,
-    resultDesc: session.transaction?.resultDesc ?? null,
+    resultDesc:
+      session.transaction?.resultDesc ?? session.paystackTransaction?.gatewayResponse ?? null,
     captivePortalLogon,
   }
 
@@ -82,7 +100,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
  * docs/MPESA-INTEGRATION.md's STK Push Query fallback. Failures here are swallowed: the session
  * just stays AWAITING_PAYMENT and the next poll tries again.
  */
-async function tryResolveViaQueryFallback(
+async function tryResolveViaMpesaQueryFallback(
   session: PortalSession & { package: Package },
   transaction: MpesaTransaction,
 ): Promise<void> {
@@ -97,5 +115,32 @@ async function tryResolveViaQueryFallback(
     )
   } catch (error) {
     console.error("[sessions/status] STK query fallback failed", error)
+  }
+}
+
+/**
+ * Asks Paystack directly instead of waiting on a charge.success webhook that may never arrive —
+ * see docs/PAYSTACK-INTEGRATION.md's verify-transaction fallback. Failures here are swallowed: the
+ * session just stays AWAITING_PAYMENT and the next poll tries again.
+ */
+async function tryResolveViaPaystackVerifyFallback(
+  session: PortalSession & { package: Package },
+  transaction: PaystackTransaction,
+): Promise<void> {
+  try {
+    const result = await verifyTransaction(transaction.reference)
+    if (!isTerminalPaystackStatus(result.data.status)) return
+
+    await applyPaystackResult(
+      { ...transaction, session },
+      {
+        status: result.data.status,
+        gatewayResponse: result.data.gateway_response,
+        paidAt: result.data.paid_at ? new Date(result.data.paid_at) : null,
+        raw: result,
+      },
+    )
+  } catch (error) {
+    console.error("[sessions/status] Paystack verify fallback failed", error)
   }
 }

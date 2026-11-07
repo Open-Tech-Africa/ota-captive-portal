@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { appDb } from "@/lib/db/app"
+import { env } from "@/lib/env"
 import { createSessionSchema } from "@/lib/schemas/session"
 import { initiateStkPush } from "@/lib/mpesa/client"
+import { initiateMpesaCharge, buildPlaceholderEmail } from "@/lib/paystack/client"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
 const TEN_MINUTES_MS = 10 * 60 * 1000
@@ -44,35 +46,60 @@ export async function POST(request: Request) {
   })
 
   try {
-    const stkResponse = await initiateStkPush({
-      phoneNumber,
-      amount: pkg.priceKes,
-      accountReference: session.id,
-      transactionDesc: `WiFi ${pkg.name}`,
-    })
+    if (env.PAYMENT_PROVIDER === "paystack") {
+      const chargeResponse = await initiateMpesaCharge({
+        phoneNumber,
+        amountKes: pkg.priceKes,
+        email: buildPlaceholderEmail(phoneNumber),
+        accountReference: session.id,
+      })
 
-    await appDb.$transaction([
-      appDb.mpesaTransaction.create({
-        data: {
-          sessionId: session.id,
-          merchantRequestId: stkResponse.MerchantRequestID,
-          checkoutRequestId: stkResponse.CheckoutRequestID,
-          amount: pkg.priceKes,
-          phoneNumber,
-          status: "INITIATED",
-        },
-      }),
-      appDb.portalSession.update({
-        where: { id: session.id },
-        data: { status: "AWAITING_PAYMENT" },
-      }),
-    ])
+      await appDb.$transaction([
+        appDb.paystackTransaction.create({
+          data: {
+            sessionId: session.id,
+            reference: chargeResponse.data.reference,
+            amount: pkg.priceKes,
+            phoneNumber,
+            status: "INITIATED",
+          },
+        }),
+        appDb.portalSession.update({
+          where: { id: session.id },
+          data: { status: "AWAITING_PAYMENT" },
+        }),
+      ])
+    } else {
+      const stkResponse = await initiateStkPush({
+        phoneNumber,
+        amount: pkg.priceKes,
+        accountReference: session.id,
+        transactionDesc: `WiFi ${pkg.name}`,
+      })
+
+      await appDb.$transaction([
+        appDb.mpesaTransaction.create({
+          data: {
+            sessionId: session.id,
+            merchantRequestId: stkResponse.MerchantRequestID,
+            checkoutRequestId: stkResponse.CheckoutRequestID,
+            amount: pkg.priceKes,
+            phoneNumber,
+            status: "INITIATED",
+          },
+        }),
+        appDb.portalSession.update({
+          where: { id: session.id },
+          data: { status: "AWAITING_PAYMENT" },
+        }),
+      ])
+    }
 
     return NextResponse.json({ sessionId: session.id })
   } catch (error) {
     await appDb.portalSession.update({ where: { id: session.id }, data: { status: "FAILED" } })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to start M-Pesa payment" },
+      { error: error instanceof Error ? error.message : "Failed to start payment" },
       { status: 502 },
     )
   }

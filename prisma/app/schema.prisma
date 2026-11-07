@@ -62,6 +62,7 @@ model PortalSession {
   radiusPasswordOneTime String?
   expiresAt          DateTime?
   transaction        MpesaTransaction?
+  paystackTransaction PaystackTransaction?
   provisionLogs      RadiusProvisionLog[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -94,6 +95,32 @@ model MpesaTransaction {
   rawCallback        Json?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+}
+
+enum PaystackStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+// Mirrors MpesaTransaction's shape (see docs/RADIUS-INTEGRATION.md's "two schemas" philosophy for
+// why providers get their own table rather than a shared polymorphic one) — this one tracks a
+// Paystack-initiated M-Pesa STK push instead of a direct Daraja one, see docs/PAYSTACK-INTEGRATION.md.
+model PaystackTransaction {
+  id              String         @id @default(cuid())
+  sessionId       String         @unique
+  session         PortalSession  @relation(fields: [sessionId], references: [id])
+  reference       String         @unique
+  amount          Int
+  phoneNumber     String
+  status          PaystackStatus @default(INITIATED)
+  gatewayResponse String?
+  paidAt          DateTime?
+  rawWebhook      Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
 model RadiusProvisionLog {

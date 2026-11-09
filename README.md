@@ -45,6 +45,44 @@ You don't need any of the above to try the app itself — see **Quickstart** bel
 - **pnpm**, Docker + Docker Compose
 - No customer accounts — subscribers are identified by phone number only. A lightweight shared-password staff login gates `/admin` (see [`docs/ADMIN.md`](docs/ADMIN.md)).
 
+## Technologies used
+
+### This app
+
+| Technology | Role here | Docs |
+|---|---|---|
+| [Next.js](https://nextjs.org/) | App framework (App Router, Cache Components) | [nextjs.org/docs](https://nextjs.org/docs) |
+| [React](https://react.dev/) | UI library Next.js is built on | [react.dev/reference/react](https://react.dev/reference/react) |
+| [TypeScript](https://www.typescriptlang.org/) | Strict typing throughout | [typescriptlang.org/docs](https://www.typescriptlang.org/docs/) |
+| [Zod](https://zod.dev/) | Runtime validation + source of truth for types (env, forms, API bodies, provider payloads) | [zod.dev](https://zod.dev/) |
+| [Prisma](https://www.prisma.io/) | ORM for both Postgres and MariaDB datasources | [prisma.io/docs](https://www.prisma.io/docs) |
+| [Tailwind CSS](https://tailwindcss.com/) | Styling | [tailwindcss.com/docs](https://tailwindcss.com/docs) |
+| [shadcn/ui](https://ui.shadcn.com/) | UI components, built on Radix primitives | [ui.shadcn.com/docs](https://ui.shadcn.com/docs) |
+| [Radix UI](https://www.radix-ui.com/) | Unstyled accessible primitives shadcn/ui wraps | [radix-ui.com/primitives/docs](https://www.radix-ui.com/primitives/docs/overview/introduction) |
+| [Sonner](https://sonner.emilkowal.ski/) | Toast notifications | [sonner.emilkowal.ski](https://sonner.emilkowal.ski/) |
+| [Lucide](https://lucide.dev/) | Icons | [lucide.dev/icons](https://lucide.dev/icons/) |
+| [pnpm](https://pnpm.io/) | Package manager | [pnpm.io/motivation](https://pnpm.io/motivation) |
+| [ESLint](https://eslint.org/) + [Prettier](https://prettier.io/) | Linting and formatting | [eslint.org/docs](https://eslint.org/docs/latest/) · [prettier.io/docs](https://prettier.io/docs/) |
+| [Docker](https://www.docker.com/) / [Docker Compose](https://docs.docker.com/compose/) | Containerized dev/runtime, Postgres | [docs.docker.com](https://docs.docker.com/) |
+
+### Payments
+
+| Technology | Role here | Docs |
+|---|---|---|
+| [Safaricom Daraja](https://developer.safaricom.co.ke/) | M-Pesa STK Push, direct integration | [developer.safaricom.co.ke/APIs](https://developer.safaricom.co.ke/APIs) — see [`docs/MPESA-INTEGRATION.md`](docs/MPESA-INTEGRATION.md) |
+| [Paystack](https://paystack.com/) | Alternative M-Pesa STK Push rail via their Charge API | [paystack.com/docs/api](https://paystack.com/docs/api/) — see [`docs/PAYSTACK-INTEGRATION.md`](docs/PAYSTACK-INTEGRATION.md) |
+
+### WISP / network infrastructure (not part of this repo — see [Physical / network stack](#physical--network-stack-not-part-of-this-repo-assumed-already-built-or-built-alongside-it) above)
+
+| Technology | Role here | Docs |
+|---|---|---|
+| [OPNsense](https://opnsense.org/) | Gateway/router, Captive Portal plugin | [docs.opnsense.org](https://docs.opnsense.org/) |
+| [FreeRADIUS](https://freeradius.org/) | AAA server backing OPNsense's captive portal | [freeradius.org/documentation](https://freeradius.org/documentation/) |
+| [daloRADIUS](https://github.com/lirantal/daloradius) | Staff web UI over the FreeRADIUS schema (NAS management, reports) | [daloRADIUS wiki](https://github.com/lirantal/daloradius/wiki) |
+| [MariaDB](https://mariadb.org/) | Database engine behind FreeRADIUS/daloRADIUS (`radcheck`, `radreply`, `radacct`, …) | [mariadb.com/kb](https://mariadb.com/kb/en/documentation/) |
+| [PostgreSQL](https://www.postgresql.org/) | Database engine behind this app's own data | [postgresql.org/docs](https://www.postgresql.org/docs/) |
+| [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`cloudflared`) | Public HTTPS URL for the payment callback/webhook, with or without a domain | [Cloudflare Tunnel docs](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) |
+
 ---
 
 ## Prerequisites

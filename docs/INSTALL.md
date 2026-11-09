@@ -2,6 +2,8 @@
 
 A runbook for getting this app running on a new machine or a new hotspot site — written from what actually happened setting up the first test instance (a Proxmox LXC clone of the daloRADIUS box), not a theoretical checklist. If your situation differs, the principles still apply; adjust the specific commands.
 
+> Just want to try the app, without a real RADIUS/OPNsense install? See the [README's Quickstart](../README.md#quickstart-try-it-now-no-domain-needed) instead — this doc is for wiring up an actual hotspot site.
+
 ## 1. Decide where it runs, relative to the RADIUS database
 
 This is the one decision that changes everything else. Pick one:

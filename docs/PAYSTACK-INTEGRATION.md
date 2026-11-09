@@ -25,7 +25,7 @@ Authorization: Bearer sk_test_...
 Content-Type: application/json
 
 {
-  "email": "2547XXXXXXXX@wisp-portal.invalid",
+  "email": "2547XXXXXXXX@wisp-portal.portal.example.com",
   "amount": "5000",
   "reference": "<portalSessionId>",
   "mobile_money": {

@@ -50,6 +50,7 @@ export function PurchaseFlow({
   const [submitting, setSubmitting] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>(STATUS_COPY.PENDING)
+  const [isCheckingNow, setIsCheckingNow] = useState(false)
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const selectedPackage = packages.find((pkg) => pkg.id === selectedId) ?? null
@@ -120,9 +121,11 @@ export function PurchaseFlow({
     }
   }
 
-  async function pollStatus(id: string) {
+  async function pollStatus(id: string, options: { force?: boolean } = {}) {
     try {
-      const response = await fetch(`/api/sessions/${id}/status`)
+      const response = await fetch(
+        `/api/sessions/${id}/status${options.force ? "?force=true" : ""}`,
+      )
       if (!response.ok) return
       const parsed = sessionStatusResponseSchema.safeParse(await response.json())
       if (!parsed.success) return
@@ -150,13 +153,29 @@ export function PurchaseFlow({
     setStep("phone")
   }
 
+  async function checkNow() {
+    if (!sessionId || isCheckingNow) return
+    setIsCheckingNow(true)
+    try {
+      await pollStatus(sessionId, { force: true })
+    } finally {
+      setIsCheckingNow(false)
+    }
+  }
+
   if (step === "waiting") {
     const isStillWaiting =
       statusMessage === STATUS_COPY.AWAITING_PAYMENT || statusMessage === STATUS_COPY.PAID
     return (
       <div className="flex flex-col items-center gap-4 text-center">
         <p className="text-lg">{statusMessage}</p>
-        {!isStillWaiting ? <Button onClick={tryAgain}>Try again</Button> : null}
+        {isStillWaiting ? (
+          <Button variant="outline" onClick={checkNow} disabled={isCheckingNow}>
+            {isCheckingNow ? "Checking…" : "Check now"}
+          </Button>
+        ) : (
+          <Button onClick={tryAgain}>Try again</Button>
+        )}
         {sessionId ? <p className="text-muted-foreground text-xs">Reference: {sessionId}</p> : null}
       </div>
     )

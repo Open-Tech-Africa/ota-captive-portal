@@ -103,6 +103,8 @@ A `ResultCode` of `4999` means "still processing" — not applied, the session j
 
 Note this only resolves transactions that someone is actively polling for (i.e., a subscriber still has the splash page open). A transaction nobody's watching anymore stays `AWAITING_PAYMENT` until the cleanup job's grace period or a future visit — acceptable for now, but worth a dedicated sweep job if stale `AWAITING_PAYMENT` rows start piling up.
 
+The splash page also has a **"Check now" button**, shown the whole time a session is `AWAITING_PAYMENT`/`PAID`, that hits this same route with `?force=true` — this skips the `QUERY_FALLBACK_AFTER_MS` wait and asks Safaricom immediately, regardless of how long the transaction's been `INITIATED`. It's there for the common case of a subscriber coming back to a tab that was backgrounded (and so had its poll timer throttled by the browser) while they were off entering their PIN in the M-Pesa prompt.
+
 ## UI states to design for
 
 `PENDING → AWAITING_PAYMENT → (PAID → PROVISIONED) | FAILED | CANCELLED | TIMEOUT`

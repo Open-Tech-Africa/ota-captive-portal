@@ -28,6 +28,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // a status change, and must never trigger the one-time read, or /connecting finds it already
   // cleared by the time it asks.
   const reveal = new URL(request.url).searchParams.get("reveal") === "true"
+  // Set by the splash page's "Check now" button — lets a subscriber who came back to a stuck tab
+  // (e.g. the browser throttled polling while backgrounded to enter their M-Pesa PIN) ask for an
+  // immediate gateway check instead of waiting out QUERY_FALLBACK_AFTER_MS or the next poll tick.
+  const force = new URL(request.url).searchParams.get("force") === "true"
 
   let session = await appDb.portalSession.findUnique({
     where: { id },
@@ -39,7 +43,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   if (session.status === "AWAITING_PAYMENT") {
     const fallbackDue = (createdAt: Date) =>
-      Date.now() - createdAt.getTime() > QUERY_FALLBACK_AFTER_MS
+      force || Date.now() - createdAt.getTime() > QUERY_FALLBACK_AFTER_MS
 
     // A session's provider is fixed at creation time by which transaction relation got populated —
     // branch on that, not the current env.PAYMENT_PROVIDER, so a provider switch never strands

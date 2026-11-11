@@ -82,6 +82,8 @@ Authorization: Bearer sk_test_...
 
 A non-terminal `data.status` (see [`isTerminalPaystackStatus`](../src/lib/paystack/status.ts)) means "still processing" — not applied, the session just keeps waiting. Any terminal status is run through the exact same logic the webhook uses.
 
+The splash page's **"Check now" button** (see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md)'s fallback section) hits this same path with `?force=true`, so it works identically here — the status route branches on whichever transaction relation the session has, not on the current `PAYMENT_PROVIDER` value.
+
 ## UI states
 
 Same `PortalSession.status` machine as the Daraja path — `PENDING → AWAITING_PAYMENT → (PAID → PROVISIONED) | FAILED | CANCELLED | TIMEOUT` — the UI doesn't need to know or care which provider is active.

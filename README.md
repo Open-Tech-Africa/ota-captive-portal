@@ -13,6 +13,7 @@ Full detail lives in `docs/`:
 - [`docs/ADMIN.md`](docs/ADMIN.md) — `/admin` staff subscriber lookup (payments + RADIUS usage, refunds) and its deliberately minimal auth
 - [`docs/RADIUS-INTEGRATION.md`](docs/RADIUS-INTEGRATION.md) — how the app shares the FreeRADIUS/daloRADIUS database and provisions access
 - [`docs/OPNSENSE-SETUP.md`](docs/OPNSENSE-SETUP.md) — OPNsense captive portal + FreeRADIUS wiring
+- [`docs/PUBLISHING.md`](docs/PUBLISHING.md) — maintainer-only: checklist for taking this repo public
 
 ## Physical / network stack (not part of this repo, assumed already built or built alongside it)
 

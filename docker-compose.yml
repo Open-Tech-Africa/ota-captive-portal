@@ -78,7 +78,17 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate --url http://web:3000
 
-  # Production-grade alternative to the ephemeral tunnel above: a named Cloudflare Tunnel on a
+  # Same ephemeral quick tunnel as `tunnel` above, but proxies the production `web-prod` service
+  # instead of the dev `web` service — use this one for a real-deployment instance (see
+  # docs/INSTALL.md) that's running web-prod rather than web. Start with:
+  # docker compose --profile tunnel-prod up -d tunnel-prod
+  tunnel-prod:
+    profiles: ["tunnel-prod"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://web-prod:3000
+
+  # Production-grade alternative to the ephemeral tunnels above: a named Cloudflare Tunnel on a
   # domain you control, so the URL is stable across restarts. See README's "Using your own domain"
   # section for one-time setup (login/create/route-dns) before this will do anything — its
   # credentials live in ./.cloudflared (gitignored, set up per instance, never committed). Start

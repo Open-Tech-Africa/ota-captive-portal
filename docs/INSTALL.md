@@ -29,6 +29,7 @@ Everything below assumes **A** unless noted — it's the same [`docker-compose.y
 ## 2. Prerequisites on the target machine
 
 - Docker Engine + the `docker compose` plugin (not the old standalone `docker-compose`).
+- `git` (to clone the repo in §3).
 - **The first `docker compose build` needs to pull base images** (`node:22-alpine`,
   `postgres:17-alpine`) and `pnpm install` needs the npm registry. If the target machine sits on a
   network with no general internet access (e.g. a hotspot's own walled-off VLAN, deliberately cut
@@ -46,12 +47,9 @@ curl -fsSL https://get.docker.com | sh
 ## 3. Get the code onto the machine
 
 ```bash
-rsync -avz --exclude 'node_modules' --exclude '.next' --exclude 'src/generated' \
-  --exclude '.env' --exclude '.git' --exclude 'tsconfig.tsbuildinfo' \
-  ./ user@target:/path/to/wisp-captive-portal/
+git clone https://github.com/<your-fork-or-org>/ota-captive-portal.git
+cd ota-captive-portal
 ```
-
-(Or `git clone`, if the target machine has a way to reach your git remote.)
 
 ## 4. Create the RADIUS database user
 
@@ -105,7 +103,24 @@ Fill in at minimum:
 
 ## 6. Set up a public HTTPS tunnel for M-Pesa's callback
 
-Safaricom's STK Push callback needs a real, publicly reachable HTTPS URL — `localhost` or a private IP is rejected outright (`400.002.02 Invalid CallBackURL`). A **named Cloudflare Tunnel** on a domain you control in Cloudflare is the production-grade way to do this (not the ephemeral `trycloudflare.com` quick tunnel, which is fine for a one-off test but gets a new random URL every restart and has no access control in front of it).
+Safaricom's STK Push callback needs a real, publicly reachable HTTPS URL — `localhost` or a private IP is rejected outright (`400.002.02 Invalid CallBackURL`). Two ways to get one; most instances can just start with the first:
+
+### Quick tunnel (no Cloudflare account or domain needed)
+
+The same ephemeral Cloudflare quick tunnel the [README's Quickstart](../README.md#quickstart-try-it-now-no-domain-needed) uses, pointed at `web-prod` instead of the dev `web` service — nothing to set up beforehand:
+
+```bash
+docker compose --profile tunnel-prod up -d tunnel-prod
+docker compose logs tunnel-prod | grep trycloudflare
+```
+
+Copy the printed `https://<random>.trycloudflare.com` URL into `.env` (§5) as `APP_BASE_URL`, and as `MPESA_CALLBACK_URL` with `/api/mpesa/callback` appended.
+
+This URL is random and changes — along with any in-flight payment callbacks — every time the `tunnel-prod` container restarts, and there's no access control in front of it. Fine to run an actual site on for a while, but once it's a hotspot you're keeping up long-term, switch to a named tunnel instead:
+
+### Alternative: named tunnel (stable domain, no random-restart URL)
+
+A **named Cloudflare Tunnel** on a domain you control in Cloudflare — the URL and DNS record persist across restarts, instead of being reassigned every time. Needs a domain already added to a (free) Cloudflare account.
 
 This only needs to be done **once per instance** — the tunnel and its DNS record persist. All of it runs via the `cloudflare/cloudflared` Docker image already used by [`docker-compose.yml`](../docker-compose.yml)'s `named-tunnel` service; nothing extra to install.
 
@@ -143,11 +158,23 @@ Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§5) to `https://<your-su
 
 ## 7. Build and start
 
+Whichever tunnel you set up in §6, naming the services explicitly like this — rather than a bare
+`up -d` — avoids also starting the dev `web` service, which would otherwise collide with
+`web-prod` on port 3000.
+
+**With the quick tunnel:**
+
 ```bash
-docker compose --profile prod --profile named-tunnel up -d --build web-prod named-tunnel
+docker compose up -d db
+docker compose --profile prod --profile tunnel-prod up -d --build web-prod tunnel-prod
 ```
 
-This brings up `db`, the production `web-prod` build, and the named tunnel together (naming services explicitly like this, rather than just `up -d`, avoids also starting the dev `web` service, which would otherwise collide with `web-prod` on port 3000).
+**With the named tunnel:**
+
+```bash
+docker compose up -d db
+docker compose --profile prod --profile named-tunnel up -d --build web-prod named-tunnel
+```
 
 ## 8. Run migrations and seed packages
 
@@ -173,7 +200,7 @@ This app being up doesn't do anything until OPNsense redirects unauthenticated c
 
 ## Redeploying after a code change
 
-Repeat §3's rsync, then:
+`git pull`, then:
 
 ```bash
 docker compose --profile prod up -d --build web-prod

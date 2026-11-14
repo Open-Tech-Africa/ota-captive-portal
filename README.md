@@ -149,6 +149,12 @@ If you're using Paystack, there's no per-request callback field — instead set 
 
 Everything above runs against this app's own Postgres only. Payment will succeed, but the RADIUS-provisioning step right after it will fail on purpose — `RADIUS_DATABASE_URL` is just a placeholder, so there's nothing real to write to — and the session ends up `FAILED` rather than `PROVISIONED` (the actual error is logged in the `RadiusProvisionLog` table, not swallowed). That's expected for a Quickstart run. To wire up the real network side (FreeRADIUS/daloRADIUS + OPNsense) so provisioning and auto-login actually complete, see [`docs/INSTALL.md`](docs/INSTALL.md).
 
+> **Trying the production build instead of dev mode?** The `web` service above runs `pnpm dev` with hot reload, built from the [`Dockerfile`](Dockerfile)'s `dev` stage. There's also a `web-prod` service, built from the same Dockerfile's multi-stage `build`/`runner` stages (Next.js standalone output, no dev dependencies, runs as a non-root user) — the same image used in a real deployment (see [`docs/INSTALL.md`](docs/INSTALL.md)). To run it locally instead:
+> ```bash
+> docker compose --profile prod up -d --build web-prod
+> ```
+> Only one of `web` / `web-prod` can be up at a time (both bind port 3000) — stop the other first with `docker compose stop web` (or `web-prod`).
+
 ## Using your own domain instead of the ephemeral tunnel
 
 Once you're past "just trying it out," swap the ephemeral tunnel for a **named Cloudflare Tunnel** on a domain you control — same URL across restarts, sitting behind Cloudflare's network rather than a random public hostname. Needs a domain already added to a (free) Cloudflare account.

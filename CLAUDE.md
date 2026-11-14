@@ -11,11 +11,12 @@ Next.js (App Router, `src/`, Cache Components enabled), TypeScript (strict), Tai
 - `pnpm dev` — dev server on :3000
 - `pnpm check` — lint + typecheck + format check (run before every commit)
 - `pnpm lint` / `pnpm typecheck` / `pnpm format` (write) / `pnpm format:check` / `pnpm build`
-- `docker compose up -d db` — local Postgres (host port 5435)
+- `docker compose up -d db` — local Postgres only (host port 5435)
 - `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:studio` — this app's own schema (`prisma/app`)
 - `pnpm radius:pull` / `pnpm radius:generate` — sync `prisma/radius/schema.prisma` from the live daloRADIUS database (pull), or just regenerate the client after editing it by hand (generate). **Never** `prisma migrate` against the radius datasource — daloRADIUS's own SQL files own that schema.
-- `docker compose up --build` — dev container with hot reload
-- `docker compose --profile prod up --build web-prod` — production image check
+- `pnpm docker:dev` — db + dev container with hot reload + a quick Cloudflare tunnel pointed at it
+- `pnpm docker:prod` — db + production image + a quick Cloudflare tunnel pointed at `web-prod`
+- `pnpm docker:clean` — tear down all compose services, **including volumes** (wipes the local `db` data) — `docker compose down --volumes --remove-orphans`
 
 ## Git workflow
 - `master` is always releasable. Never commit feature work directly to it after the initial scaffold.

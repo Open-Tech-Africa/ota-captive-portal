@@ -96,14 +96,14 @@ Fill in at minimum:
 - `DATABASE_URL` — leave as-is; `docker-compose.yml` already points this at the `db` service for
   you regardless of topology
 - `CRON_SECRET` — `openssl rand -base64 32`
-- `MPESA_*` — real (sandbox is fine to start) Safaricom Daraja credentials; see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md)
+- `MPESA_*` — real (sandbox is fine to start) Safaricom Daraja credentials; see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md) — **or** set `PAYMENT_PROVIDER=paystack` and fill in `PAYSTACK_SECRET_KEY` instead, to use Paystack as the STK Push rail; see [`PAYSTACK-INTEGRATION.md`](PAYSTACK-INTEGRATION.md)
 - `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` / `OPNSENSE_DEFAULT_ZONE_ID` — see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)
 
 `chmod 600 .env` — it holds real credentials. `APP_BASE_URL`/`MPESA_CALLBACK_URL` need the tunnel domain from the next step, so come back and fill those in after it.
 
-## 6. Set up a public HTTPS tunnel for M-Pesa's callback
+## 6. Set up a public HTTPS tunnel for the payment callback/webhook
 
-Safaricom's STK Push callback needs a real, publicly reachable HTTPS URL — `localhost` or a private IP is rejected outright (`400.002.02 Invalid CallBackURL`). Two ways to get one; most instances can just start with the first:
+Both payment rails need a real, publicly reachable HTTPS URL to reach this app — `localhost` or a private IP gets Safaricom's STK Push callback rejected outright (`400.002.02 Invalid CallBackURL`), and Paystack's dashboard won't accept one for its webhook either. Two ways to get one; most instances can just start with the first:
 
 ### Quick tunnel (no Cloudflare account or domain needed)
 
@@ -115,6 +115,8 @@ docker compose logs tunnel-prod | grep trycloudflare
 ```
 
 Copy the printed `https://<random>.trycloudflare.com` URL into `.env` (§5) as `APP_BASE_URL`, and as `MPESA_CALLBACK_URL` with `/api/mpesa/callback` appended.
+
+**If you're using Paystack instead** (`PAYMENT_PROVIDER=paystack`), there's no per-request callback field — set the webhook URL in the Paystack dashboard (**Settings > API Keys & Webhooks**) to `<tunnel-url>/api/paystack/webhook`. This is optional in practice: `GET /api/sessions/[id]/status` also polls Paystack's verify-transaction endpoint directly ~15s after a charge starts regardless (see [`PAYSTACK-INTEGRATION.md`](PAYSTACK-INTEGRATION.md)'s fallback section), so payments still resolve without it, just slower. With the quick tunnel, remember this URL goes stale on every `tunnel-prod` restart, same as `APP_BASE_URL` — update it in the dashboard again, or switch to the named tunnel below.
 
 This URL is random and changes — along with any in-flight payment callbacks — every time the `tunnel-prod` container restarts, and there's no access control in front of it. Fine to run an actual site on for a while, but once it's a hotspot you're keeping up long-term, switch to a named tunnel instead:
 
@@ -152,7 +154,7 @@ ingress:
   - service: http_status:404
 ```
 
-Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§5) to `https://<your-subdomain>.yourdomain.com` (and `.../api/mpesa/callback` for the latter).
+Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§5) to `https://<your-subdomain>.yourdomain.com` (and `.../api/mpesa/callback` for the latter). **If you're using Paystack instead**, set the webhook URL in the Paystack dashboard (**Settings > API Keys & Webhooks**) to `https://<your-subdomain>.yourdomain.com/api/paystack/webhook` — unlike the quick tunnel, this one doesn't need re-doing on every restart.
 
 `.cloudflared/` is gitignored, same treatment as `.env` — it holds real credentials and is never checked out from a fresh clone; set it up fresh on each new instance.
 

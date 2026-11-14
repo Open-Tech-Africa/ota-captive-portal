@@ -188,7 +188,7 @@ docker compose --profile named-tunnel up -d
 
 `.cloudflared/` is gitignored — it holds real credentials; set it up fresh per deployment, never commit it.
 
-> **Running on the same host as FreeRADIUS/daloRADIUS** (the real-deployment topology, recommended for an actual hotspot site)? Use [`docker-compose.lxc.yml`](docker-compose.lxc.yml) instead, which host-networks everything so the app can reach MariaDB on `127.0.0.1`. See [`docs/INSTALL.md`](docs/INSTALL.md) for that full runbook, including this same named-tunnel setup adapted for host networking (`service: http://localhost:3000` instead of `http://web:3000`).
+> **Running on the same host as FreeRADIUS/daloRADIUS** (the real-deployment topology, recommended for an actual hotspot site)? Same compose file — point `RADIUS_DATABASE_URL` at `host.docker.internal:3306` so the container reaches MariaDB on the host instead of a VPN/tunnel address, and use the production `web-prod` service (`service: http://web-prod:3000` in the tunnel's ingress, `--profile prod up -d --build web-prod`) rather than the dev `web` service shown above. See [`docs/INSTALL.md`](docs/INSTALL.md) for that full runbook.
 
 ## Running a new instance against a real daloRADIUS install
 

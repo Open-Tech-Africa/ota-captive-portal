@@ -1,23 +1,41 @@
 # Installing a new instance
 
-A runbook for getting this app running on a new machine or a new hotspot site — written from what actually happened setting up the first test instance (a Proxmox LXC clone of the daloRADIUS box), not a theoretical checklist. If your situation differs, the principles still apply; adjust the specific commands.
+A runbook for getting this app running on a new machine or a new hotspot site. If your situation
+differs from what's written here, the principles still apply; adjust the specific commands.
 
 > Just want to try the app, without a real RADIUS/OPNsense install? See the [README's Quickstart](../README.md#quickstart-try-it-now-no-domain-needed) instead — this doc is for wiring up an actual hotspot site.
 
 ## 1. Decide where it runs, relative to the RADIUS database
 
-This is the one decision that changes everything else. Pick one:
+This is the one decision that changes a couple of env values later. Pick one:
 
-- **A — Same host as FreeRADIUS/daloRADIUS** (recommended for a real WISP site, and what the test instance uses). The app reaches MariaDB over `127.0.0.1`, no VPN, no exposed DB port. Use [`docker-compose.lxc.yml`](../docker-compose.lxc.yml).
-- **B — A different host from FreeRADIUS/daloRADIUS.** You need a VPN (WireGuard) or SSH tunnel from wherever the app runs into the RADIUS DB's network, or you expose MariaDB's port and firewall it tightly (not recommended). Use the regular [`docker-compose.yml`](../docker-compose.yml) and point `RADIUS_DATABASE_URL` at the tunnel/VPN address. See [`RADIUS-INTEGRATION.md`](RADIUS-INTEGRATION.md).
+- **A — Same host as FreeRADIUS/daloRADIUS** (recommended for a real WISP site). The app reaches
+  MariaDB via `host.docker.internal` (the `web`/`web-prod` services already map that hostname to
+  the host machine — see [`docker-compose.yml`](../docker-compose.yml)), no VPN, no exposing the DB
+  port to anything beyond this one machine. This needs two things true on the RADIUS box that
+  aren't the case by default on a lot of hardened installs:
+  - MariaDB's `bind-address` (in `my.cnf`/`mariadb.conf.d/`) must accept connections from something
+    other than `127.0.0.1` — either `0.0.0.0` (then firewall port 3306 to only the Docker bridge
+    subnet, see §5) or the specific address Docker's bridge network uses on this host.
+  - The RADIUS database user (§5) must be granted from that same reachable range, not just
+    `127.0.0.1`/`localhost`.
+- **B — A different host from FreeRADIUS/daloRADIUS.** You need a VPN (WireGuard) or SSH tunnel
+  from wherever the app runs into the RADIUS DB's network, or you expose MariaDB's port and
+  firewall it tightly (not recommended). Point `RADIUS_DATABASE_URL` at the tunnel/VPN address
+  instead of `host.docker.internal`. See [`RADIUS-INTEGRATION.md`](RADIUS-INTEGRATION.md).
 
-Everything below assumes **A** unless noted.
+Everything below assumes **A** unless noted — it's the same [`docker-compose.yml`](../docker-compose.yml) either way, just a different `RADIUS_DATABASE_URL` value.
 
 ## 2. Prerequisites on the target machine
 
 - Docker Engine + the `docker compose` plugin (not the old standalone `docker-compose`).
-- If the target is an **LXC container** (Proxmox or otherwise): it must have nesting enabled, or Docker inside it won't start. On Proxmox: `pct set <vmid> --features nesting=1,keyctl=1` (or set it in the container's Options before first boot).
-- No internet access required long-term, but **the first `docker compose build` needs to pull base images** (`node:22-alpine`, `postgres:17-alpine`) and `pnpm install` needs the npm registry. If the machine sits on a walled-garden network (see §3), you'll need temporary access for this one step.
+- **The first `docker compose build` needs to pull base images** (`node:22-alpine`,
+  `postgres:17-alpine`) and `pnpm install` needs the npm registry. If the target machine sits on a
+  network with no general internet access (e.g. a hotspot's own walled-off VLAN, deliberately cut
+  off from the internet the same way subscriber devices are), get it temporary outbound access for
+  this one step — a second NIC on a network that has internet, a temporary route, whatever's
+  easiest for your setup — then do the Docker install and first build, then remove or keep that
+  access depending on how often you expect to rebuild.
 
 Install Docker if it's missing:
 
@@ -25,22 +43,7 @@ Install Docker if it's missing:
 curl -fsSL https://get.docker.com | sh
 ```
 
-## 3. If the machine has no general internet access
-
-This happened on the first test instance: it sits on the hotspot's own VLAN, which is deliberately walled off (no DNS, can't even ping its own gateway) — the same restriction that will apply to real subscriber devices. To get through this just for initial setup, on Proxmox:
-
-```bash
-# Add a temporary NIC on a network that does have internet (e.g. the management bridge)
-pct set <vmid> -net1 name=eth1,bridge=vmbr0,ip=dhcp,type=veth
-pct exec <vmid> -- dhclient eth1
-pct exec <vmid> -- bash -c 'echo "nameserver 1.1.1.1" > /etc/resolv.conf'
-```
-
-Do the Docker install and first `docker compose build` with that NIC attached. Afterward, either remove it (`pct set <vmid> -delete net1`) so the box matches the real network it serves, or leave it for easier future rebuilds/code updates — that's a judgment call based on how often you expect to redeploy.
-
-## 4. Get the code onto the machine
-
-If you have direct SSH into the target:
+## 3. Get the code onto the machine
 
 ```bash
 rsync -avz --exclude 'node_modules' --exclude '.next' --exclude 'src/generated' \
@@ -48,64 +51,63 @@ rsync -avz --exclude 'node_modules' --exclude '.next' --exclude 'src/generated' 
   ./ user@target:/path/to/wisp-captive-portal/
 ```
 
-If the target is a **Proxmox LXC you don't have direct SSH into** (common — the container itself may have no route out, as in §3), go through the Proxmox host, which can see the container's filesystem directly:
+(Or `git clone`, if the target machine has a way to reach your git remote.)
 
-```bash
-# hop 1: your machine -> Proxmox host
-rsync -avz --exclude 'node_modules' --exclude '.next' --exclude 'src/generated' \
-  --exclude '.env' --exclude '.git' --exclude 'tsconfig.tsbuildinfo' \
-  ./ root@<proxmox-host>:/root/wisp-captive-portal/
+## 4. Create the RADIUS database user
 
-# hop 2: Proxmox host -> the LXC's rootfs (find the exact path with `pct config <vmid>` -> rootfs storage, then `zfs list` or the storage's mount convention)
-ssh root@<proxmox-host> "rsync -a --delete --exclude node_modules --exclude .next --exclude src/generated --exclude .env \
-  /root/wisp-captive-portal/ /<storage-mount>/subvol-<vmid>-disk-0/root/wisp-captive-portal/ && \
-  chown -R 100000:100000 /<storage-mount>/subvol-<vmid>-disk-0/root/wisp-captive-portal"
-```
-
-The `chown -R 100000:100000` matters for an **unprivileged** LXC: the container's root (uid 0 inside) is remapped to uid 100000 on the host, so files copied in as the host's real root need that ownership to be usable as root inside the container.
-
-## 5. Create the RADIUS database user
-
-Don't reuse daloRADIUS's own `raduser` or `root` — create a dedicated, least-privilege user for this app, scoped to exactly the tables it touches (see [`RADIUS-INTEGRATION.md`](RADIUS-INTEGRATION.md)):
+Don't reuse daloRADIUS's own `raduser` or `root` — create a dedicated, least-privilege user for
+this app, scoped to exactly the tables it touches (see [`RADIUS-INTEGRATION.md`](RADIUS-INTEGRATION.md)):
 
 ```sql
-CREATE USER IF NOT EXISTS 'wispportal'@'127.0.0.1' IDENTIFIED BY '<generate with: openssl rand -base64 24>';
-GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radcheck      TO 'wispportal'@'127.0.0.1';
-GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radreply      TO 'wispportal'@'127.0.0.1';
-GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radusergroup  TO 'wispportal'@'127.0.0.1';
-GRANT SELECT ON raddb.radacct TO 'wispportal'@'127.0.0.1';
-GRANT SELECT ON raddb.nas     TO 'wispportal'@'127.0.0.1';
+CREATE USER IF NOT EXISTS 'wispportal'@'%' IDENTIFIED BY '<generate with: openssl rand -base64 24>';
+GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radcheck      TO 'wispportal'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radreply      TO 'wispportal'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON raddb.radusergroup  TO 'wispportal'@'%';
+GRANT SELECT ON raddb.radacct TO 'wispportal'@'%';
+GRANT SELECT ON raddb.nas     TO 'wispportal'@'%';
 FLUSH PRIVILEGES;
 ```
 
-Add `'wispportal'@'localhost'` too if anything will connect over a Unix socket rather than TCP. Verify it works before moving on:
+`@'%'` rather than `@'127.0.0.1'` — for topology A (§1) the container reaches MariaDB over Docker's
+bridge network, not loopback, so this user needs to be reachable from there. Lock this down with
+your **firewall** instead of MySQL's host-matching: allow port 3306 only from Docker's bridge
+subnet (find it with `docker network inspect <project>_default --format '{{(index .IPAM.Config 0).Subnet}}'`
+once the stack's been started once), deny it from everywhere else. For topology B, scope `@'%'`
+down to the actual VPN/tunnel peer address instead.
+
+Verify the user works before moving on (run from the RADIUS box itself, over loopback):
 
 ```bash
 mysql -h 127.0.0.1 -u wispportal -p raddb -e "SELECT 1;"
 ```
 
-If the database name or table layout differs from `raddb`'s standard FreeRADIUS schema, run `pnpm radius:pull` once `RADIUS_DATABASE_URL` is set (next step) to regenerate [`prisma/radius/schema.prisma`](../prisma/radius/schema.prisma) from what's actually there, rather than assuming it matches.
+If the database name or table layout differs from `raddb`'s standard FreeRADIUS schema, run
+`pnpm radius:pull` once `RADIUS_DATABASE_URL` is set (next step) to regenerate
+[`prisma/radius/schema.prisma`](../prisma/radius/schema.prisma) from what's actually there, rather
+than assuming it matches.
 
-## 6. Configure `.env`
+## 5. Configure `.env`
 
 ```bash
 cp .env.example .env
 ```
 
 Fill in at minimum:
-- `RADIUS_DATABASE_URL` — using the user from §5, e.g. `mysql://wispportal:<password>@127.0.0.1:3306/raddb`
-- `DATABASE_URL` — for topology A (host networking), `postgres://portal:portal_dev_password@localhost:5435/wisp_portal` matches `docker-compose.lxc.yml`'s published port
+- `RADIUS_DATABASE_URL` — `mysql://wispportal:<password>@host.docker.internal:3306/raddb` for
+  topology A (§1), or your VPN/tunnel address for topology B
+- `DATABASE_URL` — leave as-is; `docker-compose.yml` already points this at the `db` service for
+  you regardless of topology
 - `CRON_SECRET` — `openssl rand -base64 32`
 - `MPESA_*` — real (sandbox is fine to start) Safaricom Daraja credentials; see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md)
 - `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` / `OPNSENSE_DEFAULT_ZONE_ID` — see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)
 
 `chmod 600 .env` — it holds real credentials. `APP_BASE_URL`/`MPESA_CALLBACK_URL` need the tunnel domain from the next step, so come back and fill those in after it.
 
-## 7. Set up a public HTTPS tunnel for M-Pesa's callback
+## 6. Set up a public HTTPS tunnel for M-Pesa's callback
 
 Safaricom's STK Push callback needs a real, publicly reachable HTTPS URL — `localhost` or a private IP is rejected outright (`400.002.02 Invalid CallBackURL`). A **named Cloudflare Tunnel** on a domain you control in Cloudflare is the production-grade way to do this (not the ephemeral `trycloudflare.com` quick tunnel, which is fine for a one-off test but gets a new random URL every restart and has no access control in front of it).
 
-This only needs to be done **once per instance** — the tunnel and its DNS record persist. All of it runs via the `cloudflare/cloudflared` Docker image already used by `docker-compose.lxc.yml`; nothing extra to install.
+This only needs to be done **once per instance** — the tunnel and its DNS record persist. All of it runs via the `cloudflare/cloudflared` Docker image already used by [`docker-compose.yml`](../docker-compose.yml)'s `named-tunnel` service; nothing extra to install.
 
 ```bash
 mkdir -p .cloudflared
@@ -131,70 +133,57 @@ credentials-file: /home/nonroot/.cloudflared/<tunnel-id>.json
 
 ingress:
   - hostname: <your-subdomain>.yourdomain.com
-    service: http://localhost:3000
+    service: http://web-prod:3000
   - service: http_status:404
 ```
 
-`docker-compose.lxc.yml`'s `tunnel` service already expects this directory and runs `tunnel --no-autoupdate run` (the named-tunnel form) — nothing to change there. Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§6) to `https://<your-subdomain>.yourdomain.com` (and `.../api/mpesa/callback` for the latter).
-
-**Permissions gotcha on an unprivileged Proxmox LXC**: if step 1 fails with `permission denied` writing `cert.pem`, it's a UID-mapping issue, not a Cloudflare problem. The `cloudflared` image runs as a non-root user with UID `65532`, but on the LXC's host filesystem that needs to be the *shifted* UID — `100000 + 65532 = 165532` for the default subuid range — not `65532` directly:
-
-```bash
-# Run on the Proxmox host, against the host-side path of the mounted directory
-chown -R 165532:165532 /<storage>/subvol-<vmid>-disk-0/root/wisp-captive-portal/.cloudflared
-```
+Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§5) to `https://<your-subdomain>.yourdomain.com` (and `.../api/mpesa/callback` for the latter).
 
 `.cloudflared/` is gitignored, same treatment as `.env` — it holds real credentials and is never checked out from a fresh clone; set it up fresh on each new instance.
 
-## 8. Build and start
-
-Topology A (same host as the RADIUS DB):
+## 7. Build and start
 
 ```bash
-docker compose -f docker-compose.lxc.yml up -d --build
+docker compose --profile prod --profile named-tunnel up -d --build web-prod named-tunnel
 ```
 
-Topology B (different host):
+This brings up `db`, the production `web-prod` build, and the named tunnel together (naming services explicitly like this, rather than just `up -d`, avoids also starting the dev `web` service, which would otherwise collide with `web-prod` on port 3000).
+
+## 8. Run migrations and seed packages
 
 ```bash
-docker compose up -d --build
-```
-
-## 9. Run migrations and seed packages
-
-```bash
-docker compose -f docker-compose.lxc.yml exec -T web pnpm db:migrate --name init
-docker compose -f docker-compose.lxc.yml exec -T web pnpm db:seed
+docker compose exec -T web-prod pnpm db:migrate --name init
+docker compose exec -T web-prod pnpm db:seed
 ```
 
 (Drop `--name init` after the first instance — that flag is only for naming a brand-new migration; subsequent instances just need `pnpm db:migrate` to apply the migrations already committed to the repo, not create new ones.)
 
-## 10. Verify
+## 9. Verify
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect 200
-docker compose -f docker-compose.lxc.yml logs web --tail 40
+docker compose logs web-prod --tail 40
 ```
 
 Then confirm it's reachable from wherever subscribers actually connect (e.g. the hotspot VLAN interface's IP, not just `localhost`).
 
-## 11. Wire up OPNsense
+## 10. Wire up OPNsense
 
 This app being up doesn't do anything until OPNsense redirects unauthenticated clients to it and is configured to authenticate against the same FreeRADIUS this instance writes to. Follow [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md).
 
 ## Redeploying after a code change
 
-Repeat §4's rsync, then:
+Repeat §3's rsync, then:
 
 ```bash
-docker compose -f docker-compose.lxc.yml up -d --build web
+docker compose --profile prod up -d --build web-prod
 ```
 
 If `prisma/app/schema.prisma` changed, also run `pnpm db:migrate` again (§8) before restarting.
 
 ## Troubleshooting
 
-- **`curl`/DNS just hangs inside the container, nothing times out cleanly** — almost certainly a walled-garden network (§3), not a broken container. Check `cat /etc/resolv.conf` and whether the gateway even answers ICMP/TCP at all.
-- **Docker daemon won't start inside an LXC** — nesting isn't enabled. `pct config <vmid> | grep features` should show `nesting=1`.
+- **`curl`/DNS just hangs inside the container, nothing times out cleanly** — likely a walled-garden network (§2), not a broken container. Check `cat /etc/resolv.conf` and whether the gateway even answers ICMP/TCP at all.
+- **The app can't reach MariaDB at all (topology A)** — almost always MariaDB's `bind-address` still being `127.0.0.1`-only, which rejects anything arriving over Docker's bridge network regardless of what hostname you point `RADIUS_DATABASE_URL` at. Confirm with `mysql -h <docker-bridge-gateway-ip> -u wispportal -p raddb` from the host itself; if that fails the same way, it's the bind-address, not Docker or this app.
 - **Prisma errors about missing/unexpected columns on the radius side** — the hand-maintained `prisma/radius/schema.prisma` doesn't match this site's actual daloRADIUS schema. Run `pnpm radius:pull` against the real `RADIUS_DATABASE_URL` and commit the diff.
 - **RADIUS provisioning fails silently (session ends `FAILED`)** — check `RadiusProvisionLog` rows in the app's own Postgres DB for the actual error; it's logged there, not just swallowed.

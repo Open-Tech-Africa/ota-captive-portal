@@ -3,6 +3,7 @@ services:
   # docs/RADIUS-INTEGRATION.md — and is never stood up by this compose file.
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: portal
       POSTGRES_PASSWORD: portal_dev_password
@@ -22,6 +23,7 @@ services:
     build:
       context: .
       target: dev
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
@@ -34,6 +36,13 @@ services:
       - WATCHPACK_POLLING=true
       # inside the compose network the database host is `db`, not localhost
       - DATABASE_URL=postgres://portal:portal_dev_password@db:5432/wisp_portal
+    # Lets the container reach a FreeRADIUS/daloRADIUS MariaDB running on this same machine (the
+    # recommended real-deployment topology) via the hostname `host.docker.internal`, instead of the
+    # container's own loopback. Point `RADIUS_DATABASE_URL` at `host.docker.internal:3306` in that
+    # case — see docs/INSTALL.md. Has no effect, and is harmless to leave in, when the RADIUS
+    # database lives elsewhere.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - /app/node_modules
@@ -44,6 +53,7 @@ services:
     build:
       context: .
       target: runner
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
@@ -54,6 +64,8 @@ services:
         required: false
     environment:
       - DATABASE_URL=postgres://portal:portal_dev_password@db:5432/wisp_portal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # Ephemeral public HTTPS URL, no Cloudflare account or domain needed — for trying the app end to
   # end (M-Pesa/Paystack callbacks need a real public URL, see docs/MPESA-INTEGRATION.md). Prints a
@@ -63,6 +75,7 @@ services:
   tunnel:
     profiles: ["tunnel"]
     image: cloudflare/cloudflared:latest
+    restart: unless-stopped
     command: tunnel --no-autoupdate --url http://web:3000
 
   # Production-grade alternative to the ephemeral tunnel above: a named Cloudflare Tunnel on a
@@ -73,6 +86,7 @@ services:
   named-tunnel:
     profiles: ["named-tunnel"]
     image: cloudflare/cloudflared:latest
+    restart: unless-stopped
     command: tunnel --no-autoupdate run
     volumes:
       - ./.cloudflared:/home/nonroot/.cloudflared:ro

@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // a Cloudflare quick tunnel's *.trycloudflare.com host, etc.), list those origins here — Next.js
   // otherwise blocks cross-origin dev/HMR requests from them, which breaks client-side hydration
   // (symptoms: clicks on the splash page silently do nothing).
-  allowedDevOrigins: [],
+  allowedDevOrigins: ["*.trycloudflare.com"],
   turbopack: {
     rules: {
       "*.css": {

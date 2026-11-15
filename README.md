@@ -203,3 +203,7 @@ See [`docs/INSTALL.md`](docs/INSTALL.md) for the full runbook: deciding where th
 ## Status
 
 A first real instance has been run end to end against a real daloRADIUS/OPNsense setup, with a live payment (both Daraja sandbox and a live Paystack charge) through to RADIUS provisioning. Not yet built: active RADIUS CoA/Disconnect (passive `Session-Timeout` + cleanup job only — see [`docs/RADIUS-INTEGRATION.md`](docs/RADIUS-INTEGRATION.md)), and per-staff admin accounts (`/admin` currently uses one shared password — see [`docs/ADMIN.md`](docs/ADMIN.md)).
+
+## License
+
+[MIT](LICENSE)

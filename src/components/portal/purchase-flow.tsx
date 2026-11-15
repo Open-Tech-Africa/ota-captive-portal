@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { PackageCard } from "@/components/portal/package-card"
-import { PoweredByMpesa } from "@/components/portal/powered-by-mpesa"
+import { PoweredBy } from "@/components/portal/powered-by"
 import { readSavedPhoneNumber, saveSavedPhoneNumber } from "@/lib/saved-phone-number"
 import { phoneNumberSchema } from "@/lib/schemas/phone"
 import { optionalEmailSchema } from "@/lib/schemas/email"
@@ -34,11 +34,13 @@ export function PurchaseFlow({
   zoneId,
   clientIp,
   redirectUrl,
+  paymentProvider,
 }: {
   packages: PublicPackage[]
   zoneId: string | null
   clientIp: string | null
   redirectUrl: string | null
+  paymentProvider: "mpesa" | "paystack"
 }) {
   const router = useRouter()
   const [step, setStep] = useState<Step>("select")
@@ -194,7 +196,7 @@ export function PurchaseFlow({
         ))}
       </div>
 
-      <PoweredByMpesa />
+      <PoweredBy provider={paymentProvider} />
 
       {step === "select" ? (
         <Button onClick={() => setStep("phone")} disabled={!selectedPackage} size="lg">

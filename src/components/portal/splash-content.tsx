@@ -1,4 +1,5 @@
 import { appDb } from "@/lib/db/app"
+import { env } from "@/lib/env"
 import { PurchaseFlow } from "@/components/portal/purchase-flow"
 import type { PublicPackage } from "@/lib/schemas/package"
 
@@ -46,6 +47,7 @@ export async function SplashContent({
       zoneId={zoneId}
       clientIp={clientIp}
       redirectUrl={redirectUrl}
+      paymentProvider={env.PAYMENT_PROVIDER}
     />
   )
 }

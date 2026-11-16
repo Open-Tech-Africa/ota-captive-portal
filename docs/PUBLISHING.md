@@ -39,29 +39,3 @@ reserved" by default, which defeats the point of a public template). Common choi
 
 Pick one and add `LICENSE` at the repo root — GitHub's "Add file" UI can generate either from a template, or use
 `gh repo license-template <mit|apache-2.0>` / copy the text from [choosealicense.com](https://choosealicense.com/).
-
-## 3. Decide where it goes public
-
-- **Flip the existing repo's visibility** (simplest — keeps all history, stars, issues, the existing URL everyone
-  already has): GitHub repo → Settings → scroll to "Danger Zone" → Change visibility → Public.
-- **Push to a new, separate public repo instead** (if you want to keep the current one private, e.g. for an
-  internal fork with real deployment specifics): create the new repo on GitHub first, then:
-  ```bash
-  git remote add public https://github.com/<you>/<new-repo-name>.git
-  git push public master
-  ```
-  Decide whether to push every branch (`git push public --all`) or just `master` — feature branches merged into
-  `master` add nothing a reader needs; branches still in progress are your call.
-
-## 4. Push
-
-This sandbox/session may not have GitHub push credentials configured — if `git fetch origin` fails with something
-like `could not read Username for 'https://github.com'`, push from a machine that's authenticated to the target
-remote instead (`git push origin master`, or `public` per above).
-
-## 5. After it's public
-
-- Set the repo's GitHub description and topics (helps it surface in search — e.g. `wisp`, `captive-portal`,
-  `mpesa`, `freeradius`, `nextjs`).
-- Open the README once as a logged-out visitor would (or in an incognito window) and walk the Quickstart from a
-  fresh clone, to catch anything that only worked because of leftover local state.

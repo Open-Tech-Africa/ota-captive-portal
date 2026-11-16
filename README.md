@@ -101,7 +101,8 @@ That's it — Postgres runs in a container, and you don't need a real RADIUS/OPN
 ## Quickstart (try it now, no domain needed)
 
 ```bash
-git clone https://github.com/<your-fork-or-org>/ota-captive-portal.git
+git clone https://github.com/Open-Tech-Africa/ota-captive-portal.git
+
 cd ota-captive-portal
 cp .env.example .env
 ```

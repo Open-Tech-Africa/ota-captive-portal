@@ -98,7 +98,7 @@ Fill in at minimum:
   you regardless of topology
 - `CRON_SECRET` — `openssl rand -base64 32`
 - `MPESA_*` — real (sandbox is fine to start) Safaricom Daraja credentials; see [`MPESA-INTEGRATION.md`](MPESA-INTEGRATION.md) — **or** set `PAYMENT_PROVIDER=paystack` and fill in `PAYSTACK_SECRET_KEY` instead, to use Paystack as the STK Push rail; see [`PAYSTACK-INTEGRATION.md`](PAYSTACK-INTEGRATION.md)
-- `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` / `OPNSENSE_DEFAULT_ZONE_ID` — see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)
+- `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` — see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)
 
 `chmod 600 .env` — it holds real credentials. `APP_BASE_URL`/`MPESA_CALLBACK_URL` need the tunnel domain from the next step, so come back and fill those in after it.
 

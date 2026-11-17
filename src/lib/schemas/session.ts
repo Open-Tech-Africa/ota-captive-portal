@@ -44,6 +44,9 @@ export const sessionStatusResponseSchema = z.object({
   resultDesc: z.string().nullable(),
   // Built server-side (needs OPNSENSE_CAPTIVE_PORTAL_BASE_URL) so /connecting never needs env access.
   captivePortalLogon: captivePortalLogonSchema.nullable(),
+  // Where /connecting sends the browser once the OPNsense logon POST has fired — OPNsense's own
+  // login page would normally do this itself, but /connecting isn't that page.
+  redirectUrl: z.string().nullable(),
 })
 
 export type SessionStatusResponse = z.infer<typeof sessionStatusResponseSchema>

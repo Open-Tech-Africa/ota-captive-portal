@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { appDb } from "@/lib/db/app"
-import { env } from "@/lib/env"
 import { buildCaptivePortalLogonFields } from "@/lib/opnsense/logon"
 import { queryStkPushStatus } from "@/lib/mpesa/client"
 import { applyStkResult } from "@/lib/mpesa/apply-stk-result"
@@ -81,10 +80,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const captivePortalLogon =
     session.status === "PROVISIONED" && session.radiusUsername && radiusPassword
       ? buildCaptivePortalLogonFields({
-          zoneId: session.zoneId ?? env.OPNSENSE_DEFAULT_ZONE_ID,
           username: session.radiusUsername,
           password: radiusPassword,
-          redirectUrl: session.redirectUrl,
         })
       : null
 
@@ -94,6 +91,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     resultDesc:
       session.transaction?.resultDesc ?? session.paystackTransaction?.gatewayResponse ?? null,
     captivePortalLogon,
+    redirectUrl: session.redirectUrl,
   }
 
   return NextResponse.json(response)

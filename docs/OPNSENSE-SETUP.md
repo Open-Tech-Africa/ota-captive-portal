@@ -20,41 +20,59 @@ OPNsense's captive portal is itself the RADIUS **NAS client** — FreeRADIUS nee
 
 ## 3. Redirecting to this app instead of OPNsense's built-in splash page
 
-OPNsense's unauthenticated-client template supports variables including `$zoneid`, `$clientip`, and `$redirurl` (the URL the client originally tried to reach) — but these are only substituted inside a proper **Template**, not inside an arbitrary HTML paste. Build it the way OPNsense's own manual describes:
+**Confirmed against the installed version's actual default template** (not a guess): there is no server-side `$zoneid`/`$clientip`/`$redirurl` placeholder substitution inside the template HTML at all. Instead, OPNsense loads the portal page with real query params already in the URL, and the page's own JavaScript reads them off `window.location`. The stock template does exactly this for the redirect target:
+```js
+let redirurl = (new URL(window.location)).searchParams.get('redirurl');
+```
+Only `redirurl` is confirmed present this way — the default template never reads a `zoneid` or `clientip` param, so don't assume OPNsense supplies them. This app doesn't need either anyway: the zone is implicit in which port `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` points at (see step 2), and the client's real IP is visible to this app's own server the moment the browser requests it directly — no need for OPNsense to pass it through a query param.
+
+Build the custom template the way OPNsense's manual describes, but with real JS instead of placeholder substitution:
 
 1. `Services > Captive Portal > Templates` → download the **default template** (a zip file).
-2. Unpack it, and replace the body of its `index.html` with a minimal page that immediately forwards the browser to this app, carrying those three variables as query params:
+2. Unpack it, and replace `index.html` with a minimal page that reads `redirurl` the same way the stock template does, then immediately forwards the browser to this app:
    ```html
    <!DOCTYPE html>
    <html>
-     <head>
-       <meta http-equiv="refresh" content="0; url=http://<server-LAN-IP>:3000/?zoneid=$zoneid&clientip=$clientip&redirurl=$redirurl" />
-     </head>
-     <body></body>
+     <head><meta charset="UTF-8" /><title>Redirecting…</title></head>
+     <body>
+       <script>
+         var redirurl = new URLSearchParams(window.location.search).get("redirurl") || "";
+         window.location.replace(
+           "http://<server-LAN-IP>:3000/?redirurl=" + encodeURIComponent(redirurl)
+         );
+       </script>
+     </body>
    </html>
    ```
 3. Repack the edited folder as a new zip, upload it under the Templates tab, then select it in the zone's **Custom template** dropdown (`Services > Captive Portal > Administration`).
 
 **Use the server's LAN IP here, not the public tunnel URL.** Hotspot clients are already on the local network — there's no reason to send their browser out to the internet and back through Cloudflare just to load a page sitting on the same LAN. `web-prod` already publishes `3000:3000` to the host (see [docker-compose.yml](../docker-compose.yml)), so `http://<server-LAN-IP>:3000` is directly reachable from the hotspot VLAN. The public tunnel is still required, but only for the M-Pesa/Paystack callback URL (step 4's auto-login POST and the app's internal API calls are unaffected either way — they're relative to whatever origin the client loaded the page from).
 
-This app's `/` route reads those query params and carries them through the whole flow (stored on `PortalSession`) so it knows which zone to log the client back into.
+This app's `/` route reads `redirurl` and carries it through the whole flow (stored on `PortalSession.redirectUrl`) so `/connecting` knows where to send the client once they're authenticated.
 
 **Walled garden**: add the server's LAN IP to the zone's **Allowed addresses** field so unauthenticated clients can actually reach it post-redirect — without this, the client's request to `<server-LAN-IP>:3000` gets intercepted by the portal again and loops back on itself. Note this field is IP/subnet-based only (there's a separate **Allowed MAC addresses** field too) — there's no hostname-based walled-garden entry, which is another reason to redirect to a bare LAN IP rather than a DNS name.
 
+**If the app server sits on a different interface/VLAN than the hotspot clients** (e.g. hotspot on an `HOURLY` interface, the server on a separate `INFRA` one) — which is good practice, not a mistake — the walled-garden entry above only clears the *captive portal's own* interception. There's a second, separate gate: the firewall rule (or lack of one) governing routing between those two interfaces. Add an explicit pass rule on the hotspot interface scoped tightly to just this one destination — source: the hotspot subnet, destination: the app server's exact IP, destination port: `3000` only. Don't open the two interfaces to each other more broadly than that; the isolation between hotspot clients and infra is worth keeping everywhere else.
+
 ## 4. Logging the client in once payment clears
 
-OPNsense's captive portal accepts a plain HTTP POST to the zone's logon URL — this is the same endpoint its own login form posts to, on the `8000 + zoneid` port confirmed in step 2 (zone 3 → `:8003`, etc.):
+**Confirmed against the installed version's actual default template** — the real login mechanism is a JSON REST API, not a form POST to `index.php?zone=...`:
 
 ```
-POST https://<opnsense-host>:<8000+zoneid>/index.php?zone=<zoneid>
+POST <OPNSENSE_CAPTIVE_PORTAL_BASE_URL>/api/captiveportal/access/logon/
 Content-Type: application/x-www-form-urlencoded
 
-auth_user=<radiusUsername>&auth_pass=<radiusPassword>&accept=Continue&redirurl=<redirurl>&zone=<zoneid>
+user=<radiusUsername>&password=<radiusPassword>
 ```
 
-The exact **field names** (`auth_user`/`auth_pass`/etc.) are not documented in OPNsense's own manual and have shifted across major versions — confirm these against the installed version's actual login form (view its source) before wiring this up; only the port/path formula above is confirmed.
+There's no `zone` field in the request — the zone is implicit in which port `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` points at (`8000+zoneid`, confirmed in step 2), so this app only ever logs clients into the one zone that URL belongs to. The response is JSON, e.g. `{"clientState": "AUTHORIZED"}` on success; the stock template's own JS checks that field, then does `window.location = 'http://'+redirurl+'?refresh'`.
 
-This app's `/connecting` page (shown once `PortalSession.status === "PROVISIONED"`) auto-submits a hidden form with those fields via the client's own browser — this matters because the POST has to originate from the subscriber's device (the captive portal keys the session off the client's IP/MAC), not from this app's server. On success, OPNsense redirects the browser to the original `redirurl` with normal internet access now flowing.
+This app can't replicate that last part directly: the request has to come from the subscriber's own browser (OPNsense keys the captive portal session off the client's IP/MAC, not this app's server), but a cross-origin `fetch()` from this app's page to OPNsense's API isn't guaranteed to have CORS headers permitting a JS-readable response. So `/connecting` (shown once `PortalSession.status === "PROVISIONED"`) instead:
+
+1. Submits a hidden form with `user`/`password`, POSTing to the endpoint above, targeted at a hidden `<iframe>` rather than the visible window — a form POST isn't subject to CORS at all, so this reliably fires regardless of what OPNsense's API allows for cross-origin reads; the response renders invisibly inside the iframe, which this app never needs to read.
+2. After a short fixed delay (to give the POST time to land), navigates the visible window to `PortalSession.redirectUrl` itself — mirroring OPNsense's own `?refresh` convention — rather than waiting on a `clientState` check it has no reliable way to perform.
+
+See [`src/lib/opnsense/logon.ts`](../src/lib/opnsense/logon.ts) and [`src/components/portal/captive-portal-auto-login.tsx`](../src/components/portal/captive-portal-auto-login.tsx) for the implementation.
 
 ## 5. Restricting authenticated clients from reaching the WebGUI
 
@@ -70,7 +88,7 @@ Already covered by the daloRADIUS install guide: `client_table = "nas"` in `sql.
 
 ## Open items to confirm against the live OPNsense version
 
-- Exact captive portal logon POST field names for the installed OPNsense version (the port/path formula is confirmed — `8000+zoneid` — but field names aren't documented upstream and have shifted across major versions)
+- Steps 3 and 4's template mechanics and logon API are confirmed against this installation's actual default template — if the OPNsense version ever changes, re-check `index.html` inside a freshly downloaded default template zip rather than assuming these still hold.
 - Whether "Allow Inbound" is present on your installed version, or already removed (25.1.4/25.10+) — changes how step 5's NAT rule needs to be built
 - Bandwidth attribute the AP vendor actually honors from `radreply` (MikroTik vs. generic WISPr vs. vendor-specific VSA) — confirm against the AP hardware in use
 - IPv6 client roaming needs **Client Roaming** enabled plus Hostwatch and a resolvable zone hostname (Unbound's DNS64 can synthesize one) — only relevant if hotspot clients get IPv6; skip otherwise

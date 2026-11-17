@@ -24,7 +24,6 @@ const serverEnvSchema = z
     PAYSTACK_SECRET_KEY: z.string().min(1).optional(),
 
     OPNSENSE_CAPTIVE_PORTAL_BASE_URL: z.url(),
-    OPNSENSE_DEFAULT_ZONE_ID: z.string().min(1),
 
     RADIUS_CLEANUP_GRACE_MINUTES: z.coerce.number().int().positive().default(10),
     // Required by POST /api/radius-cleanup to authorize the external scheduler that triggers it.

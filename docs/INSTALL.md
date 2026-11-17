@@ -47,7 +47,8 @@ curl -fsSL https://get.docker.com | sh
 ## 3. Get the code onto the machine
 
 ```bash
-git clone https://github.com/<your-fork-or-org>/ota-captive-portal.git
+git clone https://github.com/Open-Tech-Africa/ota-captive-portal.git
+
 cd ota-captive-portal
 ```
 

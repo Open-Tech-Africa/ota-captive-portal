@@ -31,8 +31,9 @@ export function CaptivePortalAutoLogin({
   useEffect(() => {
     formRef.current?.submit()
     const timer = setTimeout(() => {
-      // Mirrors OPNsense's own default template's post-login redirect convention.
-      window.location.href = redirectUrl ? `${redirectUrl}?refresh` : "/"
+      // OPNsense's redirurl is always bare host+path, never including a scheme — its own default
+      // template unconditionally prepends "http://" before navigating, and we match that here.
+      window.location.href = redirectUrl ? `http://${redirectUrl}?refresh` : "/"
     }, NAVIGATE_AFTER_MS)
     return () => clearTimeout(timer)
   }, [redirectUrl])

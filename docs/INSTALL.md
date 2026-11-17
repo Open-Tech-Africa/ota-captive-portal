@@ -102,6 +102,15 @@ Fill in at minimum:
 
 `chmod 600 .env` — it holds real credentials. `APP_BASE_URL`/`MPESA_CALLBACK_URL` need the tunnel domain from the next step, so come back and fill those in after it.
 
+**Verify `RADIUS_DATABASE_URL` over the actual path `web-prod` will use, not loopback.** §4's check above only tests MariaDB from its own box over `127.0.0.1` — that passes even when `bind-address` is still `127.0.0.1`-only, which is the single most common way this breaks (RADIUS provisioning fails silently after a successful payment, `PrismaClientInitializationError: Can't reach database server`, because the container's connection over Docker's bridge network was never actually tried). Test it the way the container will, for topology A:
+
+```bash
+docker run --rm --add-host=host.docker.internal:host-gateway mariadb:11 \
+  mysql -h host.docker.internal -P 3306 -u wispportal -p raddb -e "SELECT 1;"
+```
+
+(For topology B, swap the host/add-host for your VPN/tunnel peer address.) If this fails but §4's loopback check passed, it's `bind-address` — see MariaDB's config (typically `/etc/mysql/mariadb.conf.d/50-server.cnf`), change it to `0.0.0.0`, restart MariaDB, and re-run this check before moving on. Don't run a real payment test until this passes — it's the one step that actually proves provisioning will work end to end, not just that the credentials are valid.
+
 ## 6. Set up a public HTTPS tunnel for the payment callback/webhook
 
 Both payment rails need a real, publicly reachable HTTPS URL to reach this app — `localhost` or a private IP gets Safaricom's STK Push callback rejected outright (`400.002.02 Invalid CallBackURL`), and Paystack's dashboard won't accept one for its webhook either. Two ways to get one; most instances can just start with the first:

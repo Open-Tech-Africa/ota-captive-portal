@@ -54,6 +54,16 @@ async function SubscriberLookup({ searchParams }: { searchParams: Promise<{ phon
       })
     : []
 
+  // All-time total across every session this subscriber has ever had, not just the recent
+  // history above — usernames are stable per phone number (see docs/RADIUS-INTEGRATION.md's
+  // "Tracking returning subscribers"), so every radacct row for this phone belongs to them.
+  const usageTotal = phone
+    ? await radiusDb.radacct.aggregate({
+        where: { username: phone },
+        _sum: { acctinputoctets: true, acctoutputoctets: true },
+      })
+    : null
+
   const activeSession = usageHistory.find((row) => row.acctstoptime === null) ?? null
 
   return (
@@ -130,7 +140,15 @@ async function SubscriberLookup({ searchParams }: { searchParams: Promise<{ phon
           </section>
 
           <section className="flex flex-col gap-2">
-            <h2 className="text-muted-foreground text-sm font-medium">Usage history (RADIUS)</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-muted-foreground text-sm font-medium">Usage history (RADIUS)</h2>
+              {usageTotal ? (
+                <p className="text-muted-foreground text-sm">
+                  All-time total: {formatBytes(usageTotal._sum.acctoutputoctets)} down /{" "}
+                  {formatBytes(usageTotal._sum.acctinputoctets)} up
+                </p>
+              ) : null}
+            </div>
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-border border-b text-left">

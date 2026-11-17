@@ -71,6 +71,12 @@ Handler responsibilities (`POST /api/paystack/webhook`):
 5. **Idempotency**: guard on `PaystackTransaction.status` already being terminal, no-op if so — see [`applyPaystackResult`](../src/lib/paystack/apply-charge-result.ts), shared by both the webhook and the verify fallback so they can never diverge (mirrors `src/lib/mpesa/apply-stk-result.ts`).
 6. Always return `200` — Paystack retries on timeouts/5xx, so acknowledge fast and log problems for us to investigate rather than surfacing them as retries.
 
+**If every webhook delivery fails signature verification** (visible in the Paystack dashboard's Webhooks > Event history, each showing `401`/`invalid signature`) — this means `PAYSTACK_SECRET_KEY` in `.env` doesn't match whatever key Paystack actually signed with, not a code bug (the handler's signature logic is standard HMAC-SHA512 over the raw body; a 100%-failure-rate points at the key, not the comparison). Check:
+- **Test vs. live mismatch** — a `sk_test_...` key in `.env` while the account is actually processing live charges (or vice versa) fails every time. The webhook payload's own `data` doesn't carry a domain flag directly, but a real charge actually debiting a real phone number means you're live; confirm which mode `.env`'s key is actually in before assuming it's correct.
+- **Stray whitespace/quotes** from copy-pasting the key into `.env` (a trailing newline, an accidental quote character). Regenerate/re-copy the key fresh from the dashboard rather than assuming the existing value is clean.
+
+This doesn't block payments from resolving either way — the verify-transaction fallback below still catches it, just ~15s slower per charge — but it's worth fixing rather than leaving every webhook delivery permanently failing.
+
 ## 3. Fallback: verify transaction
 
 **Implemented in `GET /api/sessions/[id]/status`**, same pattern as the Daraja STK Push Query fallback — not a separate job. Once a `PaystackTransaction` has been `INITIATED` for more than `QUERY_FALLBACK_AFTER_MS` (15s) with nothing having resolved it, the status route calls:

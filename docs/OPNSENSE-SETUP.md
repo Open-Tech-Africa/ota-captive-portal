@@ -57,6 +57,8 @@ This app's `/` route reads `redirurl` and carries it through the whole flow (sto
 
 **If the app server sits on a different interface/VLAN than the hotspot clients** (e.g. hotspot on an `HOURLY` interface, the server on a separate `INFRA` one) — which is good practice, not a mistake — the walled-garden entry above only clears the *captive portal's own* interception. There's a second, separate gate: the firewall rule (or lack of one) governing routing between those two interfaces. Add an explicit pass rule on the hotspot interface scoped tightly to just this one destination — source: the hotspot subnet, destination: the app server's exact IP, destination port: `3000` only. Don't open the two interfaces to each other more broadly than that; the isolation between hotspot clients and infra is worth keeping everywhere else.
 
+OPNsense evaluates a given interface's rules **top-to-bottom, first match wins** — this pass rule needs to sit *above* the zone's auto-generated "Default Captive Portal block rule," or it never fires regardless of how correctly it's configured. If this stops working after any later change to the zone/interface (re-saving the zone config can reorder or regenerate auto rules), check the rule's position relative to that block rule before assuming something else broke.
+
 ## 4. Logging the client in once payment clears
 
 **Confirmed against the installed version's actual default template** — the real login mechanism is a JSON REST API, not a form POST to `index.php?zone=...`:

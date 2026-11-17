@@ -31,6 +31,19 @@ export const sessionStatusSchema = z.enum([
   "EXPIRED",
 ])
 
+/**
+ * What POST /api/sessions hands back. `status` lets the splash page show accurate copy right
+ * away — normally "PENDING" while a charge starts, but already "PROVISIONED" when this phone
+ * number had unexpired paid access and got reconnected for free instead of charged again (see
+ * docs/RADIUS-INTEGRATION.md#re-login-without-re-paying).
+ */
+export const createSessionResponseSchema = z.object({
+  sessionId: z.string(),
+  status: sessionStatusSchema,
+})
+
+export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>
+
 /** Ready-made hidden form for the /connecting page to auto-submit — see docs/OPNSENSE-SETUP.md. */
 export const captivePortalLogonSchema = z.object({
   action: z.string(),

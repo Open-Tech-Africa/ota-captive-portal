@@ -5,6 +5,7 @@ import { createSessionSchema } from "@/lib/schemas/session"
 import { initiateStkPush } from "@/lib/mpesa/client"
 import { initiateMpesaCharge, buildPlaceholderEmail } from "@/lib/paystack/client"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
+import { provisionRadiusAccess } from "@/lib/radius/provision"
 
 const TEN_MINUTES_MS = 10 * 60 * 1000
 // Caps real-world retry UX (a subscriber re-trying a declined/timed-out payment a few times)
@@ -34,6 +35,38 @@ export async function POST(request: Request) {
       { error: "Too many payment attempts — please wait a few minutes and try again" },
       { status: 429 },
     )
+  }
+
+  // A subscriber with unexpired paid access who gets bounced back to the splash page (idle
+  // timeout, OPNsense session cleared, new device) shouldn't be charged again for time they
+  // already paid for — reconnect them on whatever's left of their current grant instead. See
+  // docs/RADIUS-INTEGRATION.md#re-login-without-re-paying. Whichever package they clicked this
+  // time is irrelevant to this path.
+  const activeSession = await appDb.portalSession.findFirst({
+    where: { phoneNumber, status: "PROVISIONED", expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: "desc" },
+    include: { package: true },
+  })
+  const remainingSeconds = activeSession?.expiresAt
+    ? Math.floor((activeSession.expiresAt.getTime() - Date.now()) / 1000)
+    : 0
+
+  if (activeSession && remainingSeconds > 0) {
+    try {
+      const { username, password } = await provisionRadiusAccess(
+        activeSession,
+        activeSession.package,
+        remainingSeconds,
+      )
+      await appDb.portalSession.update({
+        where: { id: activeSession.id },
+        data: { radiusUsername: username, radiusPasswordOneTime: password },
+      })
+      return NextResponse.json({ sessionId: activeSession.id, status: "PROVISIONED" })
+    } catch (error) {
+      console.error("[sessions] reconnecting an active session failed", error)
+      // Fall through to a normal paid session rather than leaving the subscriber stuck.
+    }
   }
 
   const pkg = await appDb.package.findUnique({ where: { id: packageId } })
@@ -104,7 +137,7 @@ export async function POST(request: Request) {
       ])
     }
 
-    return NextResponse.json({ sessionId: session.id })
+    return NextResponse.json({ sessionId: session.id, status: "AWAITING_PAYMENT" })
   } catch (error) {
     console.error(`[sessions] ${env.PAYMENT_PROVIDER} charge initiation failed`, error)
     await appDb.portalSession.update({ where: { id: session.id }, data: { status: "FAILED" } })

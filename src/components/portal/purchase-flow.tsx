@@ -11,7 +11,7 @@ import { PoweredBy } from "@/components/portal/powered-by"
 import { readSavedPhoneNumber, saveSavedPhoneNumber } from "@/lib/saved-phone-number"
 import { phoneNumberSchema } from "@/lib/schemas/phone"
 import { optionalEmailSchema } from "@/lib/schemas/email"
-import { sessionStatusResponseSchema } from "@/lib/schemas/session"
+import { createSessionResponseSchema, sessionStatusResponseSchema } from "@/lib/schemas/session"
 import type { PublicPackage } from "@/lib/schemas/package"
 
 const POLL_INTERVAL_MS = 3_000
@@ -22,6 +22,8 @@ const STATUS_COPY: Record<string, string> = {
   PENDING: "Starting…",
   AWAITING_PAYMENT: "Enter your M-Pesa PIN on your phone to finish paying.",
   PAID: "Payment received — setting up your access…",
+  // Already paid, unexpired access — POST /api/sessions reconnected instead of charging again.
+  PROVISIONED: "Welcome back — reconnecting you…",
   FAILED: "That payment didn't go through.",
   CANCELLED: "You cancelled the M-Pesa prompt.",
   TIMEOUT: "No response on your phone in time.",
@@ -111,10 +113,19 @@ export function PurchaseFlow({
         toast.error(message)
         return
       }
-      const { sessionId: newSessionId } = data as { sessionId: string }
+      const parsed = createSessionResponseSchema.safeParse(data)
+      if (!parsed.success) {
+        toast.error("Payment failed to start")
+        return
+      }
+      const { sessionId: newSessionId, status } = parsed.data
       setSessionId(newSessionId)
       setStep("waiting")
-      setStatusMessage(STATUS_COPY.AWAITING_PAYMENT)
+      setStatusMessage(STATUS_COPY[status] ?? STATUS_COPY.AWAITING_PAYMENT)
+      if (status === "PROVISIONED") {
+        router.push(`/connecting?sessionId=${newSessionId}`)
+        return
+      }
       pollTimer.current = setInterval(() => pollStatus(newSessionId), POLL_INTERVAL_MS)
     } catch {
       toast.error("Couldn't reach the server — check your connection and try again")

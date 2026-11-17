@@ -54,7 +54,11 @@ export async function applyPaystackResult(
   try {
     const { session } = transaction
     const { package: pkg } = session
-    const { username, password } = await provisionRadiusAccess(session, pkg)
+    const { username, password } = await provisionRadiusAccess(
+      session,
+      pkg,
+      pkg.durationMinutes * 60,
+    )
 
     await appDb.portalSession.update({
       where: { id: session.id },

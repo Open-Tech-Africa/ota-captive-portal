@@ -55,7 +55,13 @@ Instead: **the RADIUS username is the subscriber's normalized phone number** (`2
 
 ```ts
 // src/lib/radius/provision.ts (sketch)
-async function provisionRadiusAccess(session: PortalSession, pkg: Package) {
+// sessionTimeoutSeconds is caller-supplied, not derived from pkg here — see "Re-login without
+// re-paying" below for why a reconnect passes something other than the package's full duration.
+async function provisionRadiusAccess(
+  session: PortalSession,
+  pkg: Package,
+  sessionTimeoutSeconds: number,
+) {
   const username = session.phoneNumber // stable identity — see "Tracking returning subscribers" above
   const password = generateRadiusPassword() // random, single-use per paid session
 
@@ -69,7 +75,7 @@ async function provisionRadiusAccess(session: PortalSession, pkg: Package) {
   })
   await radiusDb.radreply.createMany({
     data: [
-      { username, attribute: "Session-Timeout", op: ":=", value: String(pkg.durationMinutes * 60) },
+      { username, attribute: "Session-Timeout", op: ":=", value: String(sessionTimeoutSeconds) },
       { username, attribute: pkg.bandwidthAttribute, op: ":=", value: pkg.bandwidthValue },
     ],
   })
@@ -86,6 +92,12 @@ async function provisionRadiusAccess(session: PortalSession, pkg: Package) {
 Wrap the delete-then-insert sequence in a transaction where the driver supports it; on partial failure, roll back and mark `PortalSession.status = FAILED` with the error recorded in `RadiusProvisionLog` rather than leaving a half-provisioned user.
 
 After provisioning, the password is used exactly once, client-side, to auto-submit OPNsense's captive portal logon form (see [`OPNSENSE-SETUP.md`](OPNSENSE-SETUP.md)) — it's never displayed to the subscriber and never reused once that form submits.
+
+## Re-login without re-paying
+
+A subscriber with unexpired paid access can get bounced back to the splash page without their time actually running out — an OPNsense idle timeout, the zone's session state getting cleared, a new device/MAC, etc. `POST /api/sessions` checks for this before charging anything: if the phone number already has a `PortalSession` with `status: PROVISIONED` and `expiresAt` still in the future, it reconnects them on that instead of creating a new paid session — whichever package they clicked this time is irrelevant to this path.
+
+Reconnecting still calls [`provisionRadiusAccess`](../src/lib/radius/provision.ts), rotating the password same as a fresh payment (the old one was already cleared after its one-time read, so it can't be reused directly) — but passing the **time actually remaining** (`expiresAt - now`) as `Session-Timeout`, not the package's full duration. Otherwise every reconnect would hand out another full grant on top of whatever was left, extending total paid time for free. The existing `PortalSession` row (and its original `expiresAt`) is left alone; only `radiusUsername`/`radiusPasswordOneTime` are updated, and the response's `status` is already `PROVISIONED` so the splash page skips straight to `/connecting` instead of asking for an M-Pesa PIN. If re-provisioning itself fails, the request falls through to a normal paid session rather than leaving the subscriber stuck.
 
 ## `radacct` and package expiry
 

@@ -11,17 +11,22 @@ function generateRadiusPassword(): string {
 }
 
 /**
- * Grants a paid session RADIUS access and logs the outcome.
+ * Grants RADIUS access and logs the outcome.
  *
  * The RADIUS username is the subscriber's phone number (stable across visits, so daloRADIUS's
  * own `radacct` history groups a returning subscriber's sessions together — see
  * docs/RADIUS-INTEGRATION.md#tracking-returning-subscribers). Only the password rotates per
  * session. Any credentials left over from a previous paid session for this phone number are
  * replaced, not accumulated.
+ *
+ * `sessionTimeoutSeconds` is caller-supplied rather than derived from `pkg` here, since it isn't
+ * always the package's full duration — a free reconnect (see docs/RADIUS-INTEGRATION.md#re-login-
+ * without-re-paying) passes whatever time is actually left, not another full grant.
  */
 export async function provisionRadiusAccess(
   session: PortalSession,
   pkg: Package,
+  sessionTimeoutSeconds: number,
 ): Promise<{ username: string; password: string }> {
   const username = session.phoneNumber
   const password = generateRadiusPassword()
@@ -39,7 +44,7 @@ export async function provisionRadiusAccess(
           username,
           attribute: "Session-Timeout",
           op: ":=",
-          value: String(pkg.durationMinutes * 60),
+          value: String(sessionTimeoutSeconds),
         },
       }),
       radiusDb.radreply.create({

@@ -7,6 +7,13 @@ const serverEnvSchema = z
     RADIUS_DATABASE_URL: z.url(),
     APP_BASE_URL: z.url(),
 
+    // The hotspot's own brand, shown on the splash page and in the page title — every deployer
+    // of this app runs a different network, so this is the one piece of "Mamba WiFi"-style
+    // branding that isn't hardcoded. Kept separate from the fixed "Built by Open Tech Africa"
+    // footer credit (src/components/portal/vendor-attribution.tsx), which doesn't change per
+    // deployment.
+    SITE_NAME: z.string().min(1).default("Mamba WiFi"),
+
     // Which STK-push rail is live. Both providers' credential groups below are optional in the base
     // schema and required conditionally (see superRefine) so switching providers never needs dummy
     // values for the one you're not using — see docs/PAYSTACK-INTEGRATION.md for why this exists.

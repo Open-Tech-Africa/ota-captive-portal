@@ -15,3 +15,38 @@ export const packageSchema = z.object({
 
 export type PackageDuration = z.infer<typeof packageDurationSchema>
 export type PublicPackage = z.infer<typeof packageSchema>
+
+/** Shared between the splash page's package cards and the admin packages table. */
+export const PACKAGE_DURATION_LABEL: Record<PackageDuration, string> = {
+  HOURLY: "Hourly",
+  DAILY: "Daily",
+  WEEKLY: "Weekly",
+}
+
+/**
+ * Full admin-side shape for creating/editing a package — everything the public schema above
+ * leaves out, including the RADIUS attributes that actually grant bandwidth (see
+ * docs/RADIUS-INTEGRATION.md). Used for both POST (create) and PATCH (edit, as `.partial()`).
+ */
+export const packageInputSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  duration: packageDurationSchema,
+  durationMinutes: z.coerce.number().int().positive(),
+  priceKes: z.coerce.number().int().positive(),
+  downKbps: z.coerce.number().int().positive(),
+  upKbps: z.coerce.number().int().positive(),
+  radiusGroup: z.string().nullish(),
+  bandwidthAttribute: z.string().min(1, "e.g. Mikrotik-Rate-Limit"),
+  bandwidthValue: z.string().min(1),
+  isActive: z.boolean(),
+  sortOrder: z.coerce.number().int(),
+})
+
+export type PackageInput = z.infer<typeof packageInputSchema>
+
+/** What the admin package list/detail endpoints send back — the full row, not the trimmed public shape. */
+export const adminPackageSchema = packageInputSchema.extend({
+  id: z.string().min(1),
+})
+
+export type AdminPackage = z.infer<typeof adminPackageSchema>

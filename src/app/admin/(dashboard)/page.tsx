@@ -2,18 +2,14 @@ import { Suspense } from "react"
 import { appDb } from "@/lib/db/app"
 import { radiusDb } from "@/lib/db/radius"
 import { normalizeKenyanPhoneNumber } from "@/lib/schemas/phone"
-import { LogoutButton } from "@/components/admin/logout-button"
 import { RefundButton } from "@/components/admin/refund-button"
 
 const RADACCT_HISTORY_LIMIT = 20
 
 export default function AdminPage({ searchParams }: { searchParams: Promise<{ phone?: string }> }) {
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Subscriber lookup</h1>
-        <LogoutButton />
-      </div>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-xl font-semibold">Subscriber lookup</h1>
 
       <Suspense fallback={<p className="text-muted-foreground text-sm">Loading…</p>}>
         <SubscriberLookup searchParams={searchParams} />

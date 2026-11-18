@@ -21,7 +21,8 @@ export async function POST(request: Request) {
   // HTTPS, checking the reverse proxy's header first since a tunnel terminates TLS before Next.js
   // ever sees the request.
   const isHttps =
-    request.headers.get("x-forwarded-proto") === "https" || new URL(request.url).protocol === "https:"
+    request.headers.get("x-forwarded-proto") === "https" ||
+    new URL(request.url).protocol === "https:"
 
   const response = NextResponse.json({ ok: true })
   // The cookie's value is the password itself — a deliberate stopgap, see docs/ADMIN.md.

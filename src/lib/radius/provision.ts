@@ -47,9 +47,6 @@ export async function provisionRadiusAccess(
           value: String(sessionTimeoutSeconds),
         },
       }),
-      radiusDb.radreply.create({
-        data: { username, attribute: pkg.bandwidthAttribute, op: ":=", value: pkg.bandwidthValue },
-      }),
       ...(pkg.radiusGroup
         ? [
             radiusDb.radusergroup.create({

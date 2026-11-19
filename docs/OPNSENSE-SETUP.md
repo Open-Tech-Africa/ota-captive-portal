@@ -127,10 +127,64 @@ See [`src/lib/opnsense/admin-client.ts`](../src/lib/opnsense/admin-client.ts) an
 [`src/lib/schemas/opnsense-session.ts`](../src/lib/schemas/opnsense-session.ts) for the
 implementation.
 
+## 8. Traffic Shaper: per-package speed limits
+
+Packages used to carry a `bandwidthAttribute`/`bandwidthValue` pair (e.g. `Mikrotik-Rate-Limit` =
+`1M/2M`) sent as a RADIUS reply attribute, on the assumption that OPNsense's captive portal would
+honor it the way MikroTik's own hotspot/PPPoE server does. **It never worked**: checking OPNsense's
+actual source (`CaptiveportalBackend.php`, `CaptivePortal.xml`) shows it only reads `Session-Timeout`
+and `Idle-Timeout` from a RADIUS Access-Accept, plus `Acct-Interim-Interval` for accounting — no
+bandwidth field of any kind, under any dictionary. A maintainer explicitly declined to add one
+([opnsense/core#6682](https://github.com/opnsense/core/issues/6682)): "no plans to invest in that
+direction." Those fields are gone from `Package` now; speed is enforced via OPNsense's own
+**Traffic Shaper** API instead.
+
+**How it works**: each package gets a pair of Traffic Shaper *pipes* (one down, one up), created
+lazily the first time anyone buys it and cached on `Package.shaperDownPipeUuid`/`shaperUpPipeUuid`.
+Each subscriber session gets a pair of *rules* binding their actual IP to those pipes, created once
+their browser logs into OPNsense (`/api/sessions/[id]/apply-shaper`, called from `/connecting`) and
+removed by the same cleanup job that clears RADIUS credentials on expiry
+(`src/lib/radius/cleanup.ts`).
+
+**Setup**:
+
+1. **`OPNSENSE_HOTSPOT_INTERFACE`**: OPNsense's internal interface name for the hotspot
+   VLAN/interface (e.g. `opt1`) — check `Interfaces > Overview`. This is *not* an IP and not
+   necessarily what step 2 above uses; the Traffic Shaper's rule model keys on the interface name,
+   not an address.
+2. Reuses the same `OPNSENSE_API_KEY`/`OPNSENSE_API_SECRET` as step 7 — that user/group also needs
+   the Traffic Shaper API privilege (search "traffic shaper" under **Effective Privileges**), not
+   just Captive Portal.
+3. Nothing else to configure by hand — pipes and rules are created/removed entirely through the
+   API as subscribers connect and disconnect.
+
+See [`src/lib/opnsense/traffic-shaper.ts`](../src/lib/opnsense/traffic-shaper.ts) for the
+implementation, and its module docblock for exactly which OPNsense source files the field
+names/request shapes below come from.
+
+**This section carries more unverified assumptions than steps 1–7** — there was no live OPNsense
+box to test against while building it. Specifically, confirm before relying on it:
+
+- **Request/response shape**: `add_pipe`/`add_rule` are assumed to take `{"pipe": {...}}` /
+  `{"rule": {...}}` JSON bodies and return `{"result": "saved", "uuid": "..."}` — taken from
+  `ApiMutableModelControllerBase.php`'s shared `addBase()`, which every OPNsense Settings
+  controller uses, so this is the single most load-bearing assumption in the whole feature.
+- **Rule `direction` semantics**: this implementation assumes `direction: "in"` on the hotspot
+  interface means traffic arriving from the client (their upload) and `"out"` means traffic headed
+  to the client (their download) — standard pf/OPNsense convention, but confirm against actual
+  throughput once a real subscriber connects, not just that the API call succeeds.
+- **Rule evaluation order**: if the hotspot interface already has other Traffic Shaper rules
+  (unlikely on a fresh captive-portal-only interface, but check), this app's per-IP rules need to
+  be evaluated before any broader catch-all rule for them to take effect — rules are evaluated
+  top-to-bottom by `sequence`, and every rule this app creates uses the model's default (`1`).
+- **Pipe `mask: "none"`**: each pipe here is only ever matched by rules scoped to one specific IP,
+  so no per-source/per-destination hashing is needed on the pipe itself — confirm this doesn't
+  conflict with how OPNsense expects pipes to be shared.
+
 ## Open items to confirm against the live OPNsense version
 
 - Steps 3 and 4's template mechanics and logon API are confirmed against this installation's actual default template — if the OPNsense version ever changes, re-check `index.html` inside a freshly downloaded default template zip rather than assuming these still hold.
 - Whether "Allow Inbound" is present on your installed version, or already removed (25.1.4/25.10+) — changes how step 5's NAT rule needs to be built
-- Bandwidth attribute the AP vendor actually honors from `radreply` (MikroTik vs. generic WISPr vs. vendor-specific VSA) — confirm against the AP hardware in use
+- ~~Bandwidth attribute the AP vendor actually honors from `radreply`~~ — resolved: OPNsense's captive portal doesn't honor any bandwidth attribute from RADIUS, under any vendor dictionary. See step 8 for how speed is actually enforced now, and that section's own (more extensive) list of what still needs confirming against a live box.
 - IPv6 client roaming needs **Client Roaming** enabled plus Hostwatch and a resolvable zone hostname (Unbound's DNS64 can synthesize one) — only relevant if hotspot clients get IPv6; skip otherwise
 - **Unlike steps 1–6, step 7's session list/disconnect shapes are taken from OPNsense's own public docs/source (https://docs.opnsense.org/development/api/core/captiveportal.html), not confirmed against a live instance.** In particular: whether `session/list` returns a JSON array or an object keyed by session ID (`src/lib/schemas/opnsense-session.ts` handles either, but verify which your version actually sends), and whether the response field names (`userName`, `ipAddress`, `macAddress`, `startTime`, `bytes_in`, `bytes_out`) match exactly on your installed version. Check with `curl -u <key>:<secret> -k https://<opnsense-admin-ip>/api/captiveportal/session/list/0/` once deployed.

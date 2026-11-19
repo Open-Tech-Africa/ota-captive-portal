@@ -56,8 +56,6 @@ async function PackagesTable() {
               downKbps: pkg.downKbps,
               upKbps: pkg.upKbps,
               radiusGroup: pkg.radiusGroup,
-              bandwidthAttribute: pkg.bandwidthAttribute,
-              bandwidthValue: pkg.bandwidthValue,
               isActive: pkg.isActive,
               sortOrder: pkg.sortOrder,
             }

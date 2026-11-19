@@ -11,6 +11,10 @@ const LOGON_IFRAME_NAME = "captive-portal-logon-frame"
 // AJAX response's clientState before deciding where to go next, but we aren't that page and can't
 // read the response (it's rendered inside the hidden iframe, not a fetch we control the CORS of).
 const NAVIGATE_AFTER_MS = 1_500
+// Fires slightly before the navigate timer — OPNsense needs to have registered this client's
+// session before our server can look up its IP (see /api/sessions/[id]/apply-shaper), and that
+// happens as soon as its own logon POST lands, which NAVIGATE_AFTER_MS already waits out.
+const APPLY_SHAPER_AFTER_MS = 1_000
 
 /**
  * Logs this browser into OPNsense: submits a hidden form, targeted at a hidden iframe (not the
@@ -20,9 +24,11 @@ const NAVIGATE_AFTER_MS = 1_500
  * own device, since OPNsense keys the captive portal session off the client's IP/MAC.
  */
 export function CaptivePortalAutoLogin({
+  sessionId,
   logon,
   redirectUrl,
 }: {
+  sessionId: string
   logon: CaptivePortalLogon
   redirectUrl: string | null
 }) {
@@ -30,13 +36,21 @@ export function CaptivePortalAutoLogin({
 
   useEffect(() => {
     formRef.current?.submit()
-    const timer = setTimeout(() => {
+    // Best-effort, fire-and-forget — see the route's own docblock for why every failure there is
+    // swallowed rather than surfaced here. Never blocks or delays getting the subscriber online.
+    const applyShaperTimer = setTimeout(() => {
+      void fetch(`/api/sessions/${sessionId}/apply-shaper`, { method: "POST" }).catch(() => {})
+    }, APPLY_SHAPER_AFTER_MS)
+    const navigateTimer = setTimeout(() => {
       // OPNsense's redirurl is always bare host+path, never including a scheme — its own default
       // template unconditionally prepends "http://" before navigating, and we match that here.
       window.location.href = redirectUrl ? `http://${redirectUrl}?refresh` : "/"
     }, NAVIGATE_AFTER_MS)
-    return () => clearTimeout(timer)
-  }, [redirectUrl])
+    return () => {
+      clearTimeout(applyShaperTimer)
+      clearTimeout(navigateTimer)
+    }
+  }, [sessionId, redirectUrl])
 
   return (
     <>

@@ -62,11 +62,11 @@ to Postgres (roadmap item 3 in `CLAUDE.md`). The splash page only ever shows pac
   deleting a package that any `PortalSession` has ever referenced (`POST .../packages/[id]` returns
   409 for that case) — **deactivate instead of delete** once a package has ever been sold. Delete is
   only for packages created by mistake, never used.
-- **Form fields** include the RADIUS attributes that actually grant bandwidth
-  (`bandwidthAttribute`/`bandwidthValue`, e.g. `Mikrotik-Rate-Limit` / `1M/1M`) — see
-  `docs/RADIUS-INTEGRATION.md` before changing what a deployer should put in these; this screen
-  doesn't validate them against any real NAS vocabulary, it just stores whatever string a staff
-  member enters.
+- **Download/upload speed** (`downKbps`/`upKbps`) isn't a RADIUS attribute — OPNsense's captive
+  portal doesn't read one, under any dictionary (see
+  `docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits`). It's enforced via OPNsense's
+  Traffic Shaper API instead, wired up automatically; nothing to configure on this screen beyond
+  the numbers themselves.
 
 ## Live sessions (`/admin/sessions`)
 

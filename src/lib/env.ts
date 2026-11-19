@@ -50,6 +50,11 @@ const serverEnvSchema = z
     // skipping TLS verification for this one admin-API client. Set to false if you've put a real
     // cert on OPNsense's GUI.
     OPNSENSE_API_ALLOW_SELF_SIGNED: z.coerce.boolean().default(true),
+    // OPNsense's own interface identifier (e.g. "opt1") for the hotspot VLAN/interface — NOT an IP,
+    // and not necessarily the same as what Services > Captive Portal > Administration shows; check
+    // Interfaces > Overview. Required for the Traffic Shaper rules that enforce package speeds —
+    // see docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits.
+    OPNSENSE_HOTSPOT_INTERFACE: z.string().min(1).optional(),
 
     RADIUS_CLEANUP_GRACE_MINUTES: z.coerce.number().int().positive().default(10),
     // Required by POST /api/radius-cleanup to authorize the external scheduler that triggers it.
@@ -117,4 +122,14 @@ export const mpesaBaseUrl =
 
 export const isOpnsenseAdminApiConfigured = Boolean(
   env.OPNSENSE_API_BASE_URL && env.OPNSENSE_API_KEY && env.OPNSENSE_API_SECRET,
+)
+
+/**
+ * The Traffic Shaper integration (docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits)
+ * needs the admin API above plus the hotspot interface name — kept as its own flag rather than
+ * folded into the admin-API group so /admin/sessions (which doesn't need the interface) still
+ * works with just the three admin-API vars set.
+ */
+export const isShaperConfigured = Boolean(
+  isOpnsenseAdminApiConfigured && env.OPNSENSE_HOTSPOT_INTERFACE,
 )

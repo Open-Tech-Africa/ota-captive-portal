@@ -73,12 +73,12 @@ async function provisionRadiusAccess(
   await radiusDb.radcheck.create({
     data: { username, attribute: "Cleartext-Password", op: ":=", value: password },
   })
-  await radiusDb.radreply.createMany({
-    data: [
-      { username, attribute: "Session-Timeout", op: ":=", value: String(sessionTimeoutSeconds) },
-      { username, attribute: pkg.bandwidthAttribute, op: ":=", value: pkg.bandwidthValue },
-    ],
+  await radiusDb.radreply.create({
+    data: { username, attribute: "Session-Timeout", op: ":=", value: String(sessionTimeoutSeconds) },
   })
+  // No bandwidth radreply attribute here — OPNsense's captive portal doesn't read one, under any
+  // dictionary. Package speed is enforced via OPNsense's Traffic Shaper API instead — see
+  // docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits.
   if (pkg.radiusGroup) {
     await radiusDb.radusergroup.create({
       data: { username, groupname: pkg.radiusGroup, priority: 1 },

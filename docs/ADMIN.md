@@ -1,9 +1,13 @@
 # Staff admin area
 
-`/admin` — a subscriber lookup by phone number, showing payment history (M-Pesa or Paystack,
-whichever provider a given session used) next to RADIUS usage history, with a refund action for
-successful Paystack payments. For ISP staff, not subscribers — nothing here is linked from the
-captive portal splash page.
+Two pages behind one staff login, linked by a shared nav (`src/components/admin/admin-nav.tsx`,
+rendered from `src/app/admin/(dashboard)/layout.tsx` — the route group keeps `/admin/login` outside
+the nav/logout chrome):
+
+- **`/admin`** — subscriber lookup by phone number.
+- **`/admin/packages`** — package management (see below).
+
+For ISP staff, not subscribers — nothing here is linked from the captive portal splash page.
 
 ## Auth (deliberately minimal for now)
 
@@ -44,6 +48,24 @@ Enter a phone number (normalized the same way the splash page does, via
 - **Usage history (RADIUS)**: the subscriber's `radacct` rows (read-only, per
   `docs/RADIUS-INTEGRATION.md`) — session start/stop times, bytes down/up, terminate cause. A
   `radacct` row with no `acctstoptime` yet shows as "Currently connected."
+
+## Package management (`/admin/packages`)
+
+Create, edit, deactivate, and delete `Package` rows — previously only possible by writing directly
+to Postgres (roadmap item 3 in `CLAUDE.md`). The splash page only ever shows packages where
+`isActive` is true (`src/components/portal/splash-content.tsx`), ordered by `sortOrder`.
+
+- **Active toggle**: flips `isActive` without opening the edit dialog — the quick way to hide a
+  package from the splash page without losing its configuration or its payment history.
+- **Delete**: a hard `DELETE`. `Package.sessions` is a required relation, so Postgres rejects
+  deleting a package that any `PortalSession` has ever referenced (`POST .../packages/[id]` returns
+  409 for that case) — **deactivate instead of delete** once a package has ever been sold. Delete is
+  only for packages created by mistake, never used.
+- **Form fields** include the RADIUS attributes that actually grant bandwidth
+  (`bandwidthAttribute`/`bandwidthValue`, e.g. `Mikrotik-Rate-Limit` / `1M/1M`) — see
+  `docs/RADIUS-INTEGRATION.md` before changing what a deployer should put in these; this screen
+  doesn't validate them against any real NAS vocabulary, it just stores whatever string a staff
+  member enters.
 
 ## What's intentionally not here yet
 

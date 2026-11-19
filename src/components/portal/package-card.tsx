@@ -1,12 +1,6 @@
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import type { PublicPackage } from "@/lib/schemas/package"
-
-const DURATION_LABEL: Record<PublicPackage["duration"], string> = {
-  HOURLY: "Hourly",
-  DAILY: "Daily",
-  WEEKLY: "Weekly",
-}
+import { PACKAGE_DURATION_LABEL, type PublicPackage } from "@/lib/schemas/package"
 
 export function PackageCard({
   pkg,
@@ -35,7 +29,7 @@ export function PackageCard({
       )}
     >
       <CardHeader>
-        <CardDescription>{DURATION_LABEL[pkg.duration]}</CardDescription>
+        <CardDescription>{PACKAGE_DURATION_LABEL[pkg.duration]}</CardDescription>
         <CardTitle className="text-lg">{pkg.name}</CardTitle>
       </CardHeader>
       <CardContent className="flex items-baseline justify-between">

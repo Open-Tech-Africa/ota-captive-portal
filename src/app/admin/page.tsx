@@ -34,6 +34,37 @@ function formatDate(value: Date | null): string {
   return value ? value.toLocaleString("en-KE", { timeZone: "Africa/Nairobi" }) : "—"
 }
 
+/**
+ * The RADIUS database is a separate system this app doesn't own (see docs/RADIUS-INTEGRATION.md)
+ * and can be unreachable on its own — an uncaught error here previously left the whole page stuck
+ * on its Suspense fallback forever (Next.js abandons a Suspense boundary on an uncaught server
+ * error instead of showing an error UI), even though payment history has nothing to do with this
+ * database. Caught here so that at worst this one section degrades instead.
+ *
+ * No explicit return type here on purpose — annotating it via `Awaited<ReturnType<typeof
+ * radiusDb.radacct.aggregate>>` loses Prisma's call-site generic inference for `_sum`'s shape.
+ * Letting both branches infer naturally keeps `total` correctly typed with `_sum` non-optional.
+ */
+async function loadRadiusUsage(phone: string) {
+  try {
+    const [history, total] = await Promise.all([
+      radiusDb.radacct.findMany({
+        where: { username: phone },
+        orderBy: { acctstarttime: "desc" },
+        take: RADACCT_HISTORY_LIMIT,
+      }),
+      radiusDb.radacct.aggregate({
+        where: { username: phone },
+        _sum: { acctinputoctets: true, acctoutputoctets: true },
+      }),
+    ])
+    return { history, total, unavailable: false }
+  } catch (error) {
+    console.error("[admin] RADIUS usage lookup failed", error)
+    return { history: [], total: null, unavailable: true }
+  }
+}
+
 async function SubscriberLookup({ searchParams }: { searchParams: Promise<{ phone?: string }> }) {
   const { phone: rawPhone } = await searchParams
   const phone = rawPhone ? normalizeKenyanPhoneNumber(rawPhone) : null
@@ -46,23 +77,14 @@ async function SubscriberLookup({ searchParams }: { searchParams: Promise<{ phon
       })
     : []
 
-  const usageHistory = phone
-    ? await radiusDb.radacct.findMany({
-        where: { username: phone },
-        orderBy: { acctstarttime: "desc" },
-        take: RADACCT_HISTORY_LIMIT,
-      })
-    : []
-
   // All-time total across every session this subscriber has ever had, not just the recent
-  // history above — usernames are stable per phone number (see docs/RADIUS-INTEGRATION.md's
+  // history below — usernames are stable per phone number (see docs/RADIUS-INTEGRATION.md's
   // "Tracking returning subscribers"), so every radacct row for this phone belongs to them.
-  const usageTotal = phone
-    ? await radiusDb.radacct.aggregate({
-        where: { username: phone },
-        _sum: { acctinputoctets: true, acctoutputoctets: true },
-      })
-    : null
+  const {
+    history: usageHistory,
+    total: usageTotal,
+    unavailable: radiusUnavailable,
+  } = phone ? await loadRadiusUsage(phone) : { history: [], total: null, unavailable: false }
 
   const activeSession = usageHistory.find((row) => row.acctstoptime === null) ?? null
 
@@ -149,35 +171,41 @@ async function SubscriberLookup({ searchParams }: { searchParams: Promise<{ phon
                 </p>
               ) : null}
             </div>
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-border border-b text-left">
-                  <th className="py-2">Started</th>
-                  <th className="py-2">Stopped</th>
-                  <th className="py-2">Down / Up</th>
-                  <th className="py-2">Terminate cause</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usageHistory.map((row) => (
-                  <tr key={row.radacctid.toString()} className="border-border/50 border-b">
-                    <td className="py-2">{formatDate(row.acctstarttime)}</td>
-                    <td className="py-2">{formatDate(row.acctstoptime)}</td>
-                    <td className="py-2">
-                      {formatBytes(row.acctoutputoctets)} / {formatBytes(row.acctinputoctets)}
-                    </td>
-                    <td className="py-2">{row.acctterminatecause || "—"}</td>
+            {radiusUnavailable ? (
+              <p className="text-destructive text-sm">
+                Couldn&apos;t reach the RADIUS database — usage data is unavailable right now.
+              </p>
+            ) : (
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-border border-b text-left">
+                    <th className="py-2">Started</th>
+                    <th className="py-2">Stopped</th>
+                    <th className="py-2">Down / Up</th>
+                    <th className="py-2">Terminate cause</th>
                   </tr>
-                ))}
-                {usageHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="text-muted-foreground py-4 text-center">
-                      No RADIUS accounting data for this number.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {usageHistory.map((row) => (
+                    <tr key={row.radacctid.toString()} className="border-border/50 border-b">
+                      <td className="py-2">{formatDate(row.acctstarttime)}</td>
+                      <td className="py-2">{formatDate(row.acctstoptime)}</td>
+                      <td className="py-2">
+                        {formatBytes(row.acctoutputoctets)} / {formatBytes(row.acctinputoctets)}
+                      </td>
+                      <td className="py-2">{row.acctterminatecause || "—"}</td>
+                    </tr>
+                  ))}
+                  {usageHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-muted-foreground py-4 text-center">
+                        No RADIUS accounting data for this number.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            )}
           </section>
         </>
       ) : null}

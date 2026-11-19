@@ -91,9 +91,46 @@ If you're on OPNsense 25.1.4/25.10 or newer, note the old "Allow Inbound" toggle
 
 Already covered by the daloRADIUS install guide: `client_table = "nas"` in `sql.conf`, the `nas` table has the row for OPNsense added in step 1, and `radcheck`/`radreply`/`radusergroup` drive authentication and reply attributes. Nothing extra to configure here beyond what the guide sets up — this app just writes rows into tables FreeRADIUS is already reading. With accounting enabled in step 2, FreeRADIUS also needs `acct_table` wired (the install guide's `sql.conf` already does this), so `radacct` fills in as sessions start/stop.
 
+## 7. Admin API: live sessions + force disconnect
+
+The admin dashboard's `/admin/sessions` page (see `docs/ADMIN.md`) reads currently-connected
+clients and can force one offline, using OPNsense's **main admin REST API** — a different
+credential and host from everything above. Steps 1–6 cover the anonymous, client-facing
+`access/logon` endpoint the subscriber's own browser POSTs to (scoped to one zone via whichever
+port `OPNSENSE_CAPTIVE_PORTAL_BASE_URL` points at); this section covers OPNsense's general API,
+which this app's *server* calls directly with a key/secret, not the client's browser.
+
+1. **Generate an API key**: `System > Access > Users`, open the user you want this app to act as
+   (a dedicated service account is cleaner than reusing your own login, but either works), scroll
+   to **API keys**, click **+**. This downloads a `key:secret` pair — put them straight into
+   `OPNSENSE_API_KEY`/`OPNSENSE_API_SECRET`, there's no way to retrieve the secret again later.
+2. **Privilege**: that user (or a group it belongs to) needs the Captive Portal API privilege
+   (`System > Access > Groups`, or directly on the user under **Effective Privileges** — search for
+   "captive portal"). Without it, every call below 403s.
+3. **`OPNSENSE_API_BASE_URL`**: OPNsense's **LAN/admin IP**, e.g. `https://10.0.10.1` — deliberately
+   *not* the hotspot-interface IP/port used by `OPNSENSE_CAPTIVE_PORTAL_BASE_URL`. This talks to the
+   WebGUI's own API, which listens wherever the WebGUI does (see step 5 above for why authenticated
+   hotspot clients must never be able to reach this in the first place — that restriction is about
+   *subscriber* traffic, not this app's own server-to-server calls, which go out whatever interface
+   this app's server actually routes to OPNsense's admin IP on).
+4. **TLS**: unlike the hotspot-facing zone (deliberately HTTP-only, see step 2's cert note above),
+   the admin GUI is normally HTTPS with OPNsense's own self-signed cert. `OPNSENSE_API_ALLOW_SELF_SIGNED`
+   defaults to `true` for exactly that reason — this app's server trusts the cert blindly for this
+   one client rather than needing a real CA-issued cert on a box with no public hostname. Set it to
+   `false` if you've put a trusted cert on the WebGUI.
+5. **Zone id**: `OPNSENSE_CAPTIVE_PORTAL_ZONE_ID` (default `0`) — check
+   `Services > Captive Portal > Administration` if you have more than one zone; the session
+   list/disconnect calls need it explicitly (unlike the logon endpoint, which infers it from the
+   port).
+
+See [`src/lib/opnsense/admin-client.ts`](../src/lib/opnsense/admin-client.ts) and
+[`src/lib/schemas/opnsense-session.ts`](../src/lib/schemas/opnsense-session.ts) for the
+implementation.
+
 ## Open items to confirm against the live OPNsense version
 
 - Steps 3 and 4's template mechanics and logon API are confirmed against this installation's actual default template — if the OPNsense version ever changes, re-check `index.html` inside a freshly downloaded default template zip rather than assuming these still hold.
 - Whether "Allow Inbound" is present on your installed version, or already removed (25.1.4/25.10+) — changes how step 5's NAT rule needs to be built
 - Bandwidth attribute the AP vendor actually honors from `radreply` (MikroTik vs. generic WISPr vs. vendor-specific VSA) — confirm against the AP hardware in use
 - IPv6 client roaming needs **Client Roaming** enabled plus Hostwatch and a resolvable zone hostname (Unbound's DNS64 can synthesize one) — only relevant if hotspot clients get IPv6; skip otherwise
+- **Unlike steps 1–6, step 7's session list/disconnect shapes are taken from OPNsense's own public docs/source (https://docs.opnsense.org/development/api/core/captiveportal.html), not confirmed against a live instance.** In particular: whether `session/list` returns a JSON array or an object keyed by session ID (`src/lib/schemas/opnsense-session.ts` handles either, but verify which your version actually sends), and whether the response field names (`userName`, `ipAddress`, `macAddress`, `startTime`, `bytes_in`, `bytes_out`) match exactly on your installed version. Check with `curl -u <key>:<secret> -k https://<opnsense-admin-ip>/api/captiveportal/session/list/0/` once deployed.

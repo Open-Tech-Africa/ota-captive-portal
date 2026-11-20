@@ -33,7 +33,6 @@ ENV DATABASE_URL=postgres://build:build@localhost:5432/build \
     MPESA_PASSKEY=build \
     MPESA_CALLBACK_URL=http://localhost:3000/api/mpesa/callback \
     OPNSENSE_CAPTIVE_PORTAL_BASE_URL=https://localhost:8003 \
-    OPNSENSE_DEFAULT_ZONE_ID=build \
     CRON_SECRET=build-time-placeholder-secret-0123456789 \
     ADMIN_PASSWORD=build-time-placeholder-password
 # Explicit, not relying on `deps`' postinstall: that stage has no RADIUS_DATABASE_URL (no .env

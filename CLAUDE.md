@@ -14,8 +14,11 @@ Next.js (App Router, `src/`, Cache Components enabled), TypeScript (strict), Tai
 - `docker compose up -d db` — local Postgres only (host port 5435)
 - `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:studio` — this app's own schema (`prisma/app`)
 - `pnpm radius:pull` / `pnpm radius:generate` — sync `prisma/radius/schema.prisma` from the live daloRADIUS database (pull), or just regenerate the client after editing it by hand (generate). **Never** `prisma migrate` against the radius datasource — daloRADIUS's own SQL files own that schema.
-- `pnpm docker:dev` — db + dev container with hot reload + a quick Cloudflare tunnel pointed at it
-- `pnpm docker:prod` — db + production image + a quick Cloudflare tunnel pointed at `web-prod`
+- `pnpm docker:dev` — db + dev container with hot reload, no tunnel, `:3000` on the host
+- `pnpm docker:dev:tunnel` — the above, plus a quick ephemeral Cloudflare tunnel pointed at it
+- `pnpm docker:prod` — db + production image (`web-prod`, the `runner` build target), no tunnel, `:3000` on the host — only one of `web`/`web-prod` can be up at a time, both bind `:3000`
+- `pnpm docker:prod:tunnel` — the above, plus a quick ephemeral Cloudflare tunnel (new random URL every restart — fine for a one-off test, never for a real deployment since callback URLs would keep changing)
+- `pnpm docker:prod:named-tunnel` — the above, plus the stable named Cloudflare Tunnel (see `docs/INSTALL.md`'s "Using your own domain" for one-time setup) — what a real deployment should run
 - `pnpm docker:clean` — tear down all compose services, **including volumes** (wipes the local `db` data) — `docker compose down --volumes --remove-orphans`
 
 ## Git workflow

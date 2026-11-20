@@ -36,8 +36,6 @@ type FormState = {
   downKbps: string
   upKbps: string
   radiusGroup: string
-  bandwidthAttribute: string
-  bandwidthValue: string
   isActive: boolean
   sortOrder: string
 }
@@ -50,8 +48,6 @@ const EMPTY_FORM: FormState = {
   downKbps: "",
   upKbps: "",
   radiusGroup: "",
-  bandwidthAttribute: "",
-  bandwidthValue: "",
   isActive: true,
   sortOrder: "0",
 }
@@ -65,8 +61,6 @@ function toFormState(pkg: AdminPackage): FormState {
     downKbps: String(pkg.downKbps),
     upKbps: String(pkg.upKbps),
     radiusGroup: pkg.radiusGroup ?? "",
-    bandwidthAttribute: pkg.bandwidthAttribute,
-    bandwidthValue: pkg.bandwidthValue,
     isActive: pkg.isActive,
     sortOrder: String(pkg.sortOrder),
   }
@@ -224,28 +218,6 @@ export function PackageFormDialog(props: PackageFormDialogProps) {
                 min={1}
                 value={form.upKbps}
                 onChange={(event) => setForm({ ...form, upKbps: event.target.value })}
-                required
-              />
-            </div>
-
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <Label htmlFor="bandwidthAttribute">RADIUS bandwidth attribute</Label>
-              <Input
-                id="bandwidthAttribute"
-                placeholder="e.g. Mikrotik-Rate-Limit"
-                value={form.bandwidthAttribute}
-                onChange={(event) => setForm({ ...form, bandwidthAttribute: event.target.value })}
-                required
-              />
-            </div>
-
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <Label htmlFor="bandwidthValue">RADIUS bandwidth value</Label>
-              <Input
-                id="bandwidthValue"
-                placeholder="e.g. 1M/1M"
-                value={form.bandwidthValue}
-                onChange={(event) => setForm({ ...form, bandwidthValue: event.target.value })}
                 required
               />
             </div>

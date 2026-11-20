@@ -73,12 +73,12 @@ async function provisionRadiusAccess(
   await radiusDb.radcheck.create({
     data: { username, attribute: "Cleartext-Password", op: ":=", value: password },
   })
-  await radiusDb.radreply.createMany({
-    data: [
-      { username, attribute: "Session-Timeout", op: ":=", value: String(sessionTimeoutSeconds) },
-      { username, attribute: pkg.bandwidthAttribute, op: ":=", value: pkg.bandwidthValue },
-    ],
+  await radiusDb.radreply.create({
+    data: { username, attribute: "Session-Timeout", op: ":=", value: String(sessionTimeoutSeconds) },
   })
+  // No bandwidth radreply attribute here — OPNsense's captive portal doesn't read one, under any
+  // dictionary. Package speed is enforced via OPNsense's Traffic Shaper API instead — see
+  // docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits.
   if (pkg.radiusGroup) {
     await radiusDb.radusergroup.create({
       data: { username, groupname: pkg.radiusGroup, priority: 1 },
@@ -111,6 +111,8 @@ Two ways to cut a subscriber off once their package time is up, not mutually exc
 2. **Active (RADIUS CoA / Disconnect-Request)**: the app itself sends a Disconnect-Request (or CoA-Request to adjust bandwidth mid-session) to OPNsense the moment a package's time is up, using the session identifiers from the live `radacct` row (`Acct-Session-Id`, NAS IP). OPNsense's captive portal does support CoA/Disconnect from FreeRADIUS. This needs a CoA client in the app — the simplest option is shelling out to `radclient`/`radius-coa`-style tooling (FreeRADIUS's own CLI utilities) rather than hand-rolling the RADIUS wire protocol, pointed at OPNsense's NAS IP with the same shared secret from the `nas` table.
 
 **Recommendation**: start with passive enforcement (`Session-Timeout` sized to the package, plus the cleanup job removing `radcheck`/`radreply` rows after expiry so a lapsed login can't quietly keep working) since it needs no new network client in the app. Add active CoA/Disconnect only if a hard, immediate cutoff turns out to matter in practice (e.g. subscribers noticing a few extra free minutes) — note it here as a deliberate v2, not an oversight.
+
+**A manual, staff-initiated version of "active" exists today**, but it's a different thing from what this section is about: `/admin/sessions` (`docs/ADMIN.md`) lets staff force-disconnect a client right now, via OPNsense's own Captive Portal API (`POST /api/captiveportal/session/disconnect`, see `docs/OPNSENSE-SETUP.md#7-admin-api-live-sessions--force-disconnect`) rather than a RADIUS CoA/Disconnect-Request. It's simpler than the `radclient`-based approach above (no RADIUS wire protocol, no shared secret — just an HTTPS call with an API key), but nothing calls it automatically at expiry — it only fires when a staff member clicks the button. If active *automatic* enforcement is ever built, reusing this same OPNsense-API call instead of a RADIUS CoA client is worth considering first, since it's already wired up and tested.
 
 ## Cleanup
 

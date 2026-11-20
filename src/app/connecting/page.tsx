@@ -50,7 +50,11 @@ function ConnectingContent() {
   return (
     <>
       <StatusMessage text="Connecting you to the internet…" />
-      <CaptivePortalAutoLogin logon={data.captivePortalLogon} redirectUrl={data.redirectUrl} />
+      <CaptivePortalAutoLogin
+        sessionId={sessionId}
+        logon={data.captivePortalLogon}
+        redirectUrl={data.redirectUrl}
+      />
     </>
   )
 }

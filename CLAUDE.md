@@ -73,5 +73,5 @@ Formatting is enforced by tooling, never by hand. Config files: `.prettierrc.jso
 ## Roadmap
 1. Scaffold (current): splash + package picker, M-Pesa STK Push, RADIUS provisioning, OPNsense auto-login
 2. Wire up a real daloRADIUS install, replace `prisma/radius/schema.prisma` with a real `prisma db pull`
-3. Admin screen for managing packages (currently seeded directly in Postgres)
+3. ~~Admin screen for managing packages~~ — done (`/admin/packages`)
 4. Decide on active CoA/Disconnect enforcement (see `docs/RADIUS-INTEGRATION.md`)

@@ -6,6 +6,7 @@ the nav/logout chrome):
 
 - **`/admin`** — subscriber lookup by phone number.
 - **`/admin/packages`** — package management (see below).
+- **`/admin/sessions`** — live OPNsense captive-portal sessions + force disconnect (see below).
 
 For ISP staff, not subscribers — nothing here is linked from the captive portal splash page.
 
@@ -61,18 +62,38 @@ to Postgres (roadmap item 3 in `CLAUDE.md`). The splash page only ever shows pac
   deleting a package that any `PortalSession` has ever referenced (`POST .../packages/[id]` returns
   409 for that case) — **deactivate instead of delete** once a package has ever been sold. Delete is
   only for packages created by mistake, never used.
-- **Form fields** include the RADIUS attributes that actually grant bandwidth
-  (`bandwidthAttribute`/`bandwidthValue`, e.g. `Mikrotik-Rate-Limit` / `1M/1M`) — see
-  `docs/RADIUS-INTEGRATION.md` before changing what a deployer should put in these; this screen
-  doesn't validate them against any real NAS vocabulary, it just stores whatever string a staff
-  member enters.
+- **Download/upload speed** (`downKbps`/`upKbps`) isn't a RADIUS attribute — OPNsense's captive
+  portal doesn't read one, under any dictionary (see
+  `docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits`). It's enforced via OPNsense's
+  Traffic Shaper API instead, wired up automatically; nothing to configure on this screen beyond
+  the numbers themselves.
+
+## Live sessions (`/admin/sessions`)
+
+Shows every client OPNsense's captive portal currently has `AUTHORIZED`, read via its REST API
+(`GET /api/captiveportal/session/list/<zoneid>/`) — not `radacct`, so it reflects OPNsense's own
+session state even if a `radacct` row is stale or FreeRADIUS accounting lags. Requires
+`OPNSENSE_API_BASE_URL`/`OPNSENSE_API_KEY`/`OPNSENSE_API_SECRET` (see
+`docs/OPNSENSE-SETUP.md#7-admin-api-live-sessions--force-disconnect`); the page shows a
+"not configured" message instead of erroring when they're unset, same shape as the RADIUS-outage
+handling on the subscriber lookup page.
+
+- **Disconnect**: `POST /api/captiveportal/session/disconnect/<zoneid>/`, keyed by OPNsense's own
+  `sessionId` (not the phone number or `radacct`'s `Acct-Session-Id`). Kicks the client off
+  immediately; they have to re-authenticate through the splash page to get back online. This is a
+  **manual, staff-initiated kick** — it does not touch `radcheck`/`radreply`, and nothing calls it
+  automatically. It is *not* the automatic expiry enforcement discussed in
+  `docs/RADIUS-INTEGRATION.md#enforcing-expiry-passive-vs-active-open-design-question`, which
+  remains an open design question — this just gives staff a manual tool for the "kick this person
+  off right now" case (abuse, device sharing, a support call), independent of whether their package
+  has actually expired.
 
 ## What's intentionally not here yet
 
-- **Manual disconnect** (kick a currently-connected subscriber early): needs a RADIUS
-  CoA/Disconnect-Request client, which `docs/RADIUS-INTEGRATION.md` already flags as a deliberate
-  v2 ("add only if a hard, immediate cutoff turns out to matter in practice"), not something this
-  pass builds just because the admin screen now exists to put a button on.
+- **Automatic CoA/Disconnect enforcement at package expiry**: still an open design question — see
+  `docs/RADIUS-INTEGRATION.md`'s "Enforcing expiry: passive vs. active" section. The manual
+  disconnect button above is a different thing (staff-initiated, not expiry-triggered), though it
+  could be reused as the mechanism if active enforcement is ever built.
 - **Disputes, Settlements, balance/payout views**: real Paystack API resources, scoped out of this
   first pass to keep it to the one thing staff will actually need often (did this number pay, did
   it connect, how much did it use, can I refund it) rather than rebuilding Paystack's own dashboard.

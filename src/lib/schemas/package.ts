@@ -25,8 +25,10 @@ export const PACKAGE_DURATION_LABEL: Record<PackageDuration, string> = {
 
 /**
  * Full admin-side shape for creating/editing a package — everything the public schema above
- * leaves out, including the RADIUS attributes that actually grant bandwidth (see
- * docs/RADIUS-INTEGRATION.md). Used for both POST (create) and PATCH (edit, as `.partial()`).
+ * leaves out. downKbps/upKbps are enforced via OPNsense's Traffic Shaper, not a RADIUS attribute —
+ * see docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits for why (OPNsense's captive
+ * portal doesn't read any bandwidth field from RADIUS at all). Used for both POST (create) and
+ * PATCH (edit, as `.partial()`).
  */
 export const packageInputSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -36,8 +38,6 @@ export const packageInputSchema = z.object({
   downKbps: z.coerce.number().int().positive(),
   upKbps: z.coerce.number().int().positive(),
   radiusGroup: z.string().nullish(),
-  bandwidthAttribute: z.string().min(1, "e.g. Mikrotik-Rate-Limit"),
-  bandwidthValue: z.string().min(1),
   isActive: z.boolean(),
   sortOrder: z.coerce.number().int(),
 })

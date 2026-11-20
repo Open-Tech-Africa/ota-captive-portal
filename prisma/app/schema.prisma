@@ -26,11 +26,16 @@ model Package {
   downKbps          Int
   upKbps            Int
   radiusGroup       String?
-  bandwidthAttribute String // e.g. "Mikrotik-Rate-Limit", vendor-specific — see docs/RADIUS-INTEGRATION.md
-  bandwidthValue    String
   isActive          Boolean         @default(true)
   sortOrder         Int             @default(0)
   sessions          PortalSession[]
+  // OPNsense Traffic Shaper pipe UUIDs enforcing downKbps/upKbps for this package — see
+  // docs/OPNSENSE-SETUP.md#8-traffic-shaper-per-package-speed-limits. Not a RADIUS attribute:
+  // OPNsense's captive portal doesn't read any bandwidth field from RADIUS (confirmed against its
+  // own source — see that doc section), so speed is enforced OPNsense-side instead. Null until the
+  // first subscriber on this package actually connects (created lazily, then cached here).
+  shaperDownPipeUuid String?
+  shaperUpPipeUuid   String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 }
@@ -65,6 +70,14 @@ model PortalSession {
   // to the browser for the auto-login form. Never logged, never kept around after that single read.
   radiusPasswordOneTime String?
   expiresAt          DateTime?
+  // The OPNsense shaper rules bound to this subscriber's session (see Package.shaperDownPipeUuid
+  // above) — set once the subscriber's browser actually logs into OPNsense (src/app/api/sessions/
+  // [id]/apply-shaper/route.ts), torn down by the same cleanup job that removes RADIUS credentials.
+  // shaperClientIp is the IP OPNsense itself reported for this subscriber, not the unreliable
+  // query-param-sourced clientIp field above.
+  shaperClientIp     String?
+  shaperDownRuleUuid String?
+  shaperUpRuleUuid   String?
   transaction        MpesaTransaction?
   paystackTransaction PaystackTransaction?
   provisionLogs      RadiusProvisionLog[]

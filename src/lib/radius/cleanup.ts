@@ -1,7 +1,31 @@
 import "server-only"
 import { appDb } from "@/lib/db/app"
 import { radiusDb } from "@/lib/db/radius"
-import { env } from "@/lib/env"
+import { env, isShaperConfigured } from "@/lib/env"
+import { removeShaperRules } from "@/lib/opnsense/traffic-shaper"
+
+/**
+ * Best-effort: a shaper-API hiccup should never stop RADIUS credential cleanup, which is the
+ * security-critical half of this job. Failures are logged, not thrown — a leaked shaper rule just
+ * sits there bound to an IP that's no longer authenticated, which is low-stakes, not a dangling
+ * credential that could keep authenticating.
+ */
+async function removeShaperRulesBestEffort(session: {
+  id: string
+  shaperDownRuleUuid: string | null
+  shaperUpRuleUuid: string | null
+}): Promise<void> {
+  if (!isShaperConfigured) return
+  if (!session.shaperDownRuleUuid && !session.shaperUpRuleUuid) return
+  try {
+    await removeShaperRules({
+      downRuleUuid: session.shaperDownRuleUuid,
+      upRuleUuid: session.shaperUpRuleUuid,
+    })
+  } catch (error) {
+    console.error(`[radius-cleanup] failed to remove shaper rules for session ${session.id}`, error)
+  }
+}
 
 /**
  * Deletes RADIUS credentials for sessions whose package has expired, so a lapsed password can't
@@ -29,8 +53,19 @@ export async function cleanupExpiredRadiusSessions(): Promise<{ cleaned: number 
     })
 
     if (latestForPhoneNumber && latestForPhoneNumber.id !== session.id) {
-      // A newer paid session already replaced these credentials — just close out this record.
-      await appDb.portalSession.update({ where: { id: session.id }, data: { status: "EXPIRED" } })
+      // A newer paid session already replaced these RADIUS credentials — but its shaper rules (if
+      // any) are keyed by this session's own row, not the username, so the new session's own
+      // apply-shaper call won't touch them. Clear them here before closing the record out.
+      await removeShaperRulesBestEffort(session)
+      await appDb.portalSession.update({
+        where: { id: session.id },
+        data: {
+          status: "EXPIRED",
+          shaperClientIp: null,
+          shaperDownRuleUuid: null,
+          shaperUpRuleUuid: null,
+        },
+      })
       continue
     }
 
@@ -40,7 +75,16 @@ export async function cleanupExpiredRadiusSessions(): Promise<{ cleaned: number 
         radiusDb.radreply.deleteMany({ where: { username: session.phoneNumber } }),
         radiusDb.radusergroup.deleteMany({ where: { username: session.phoneNumber } }),
       ])
-      await appDb.portalSession.update({ where: { id: session.id }, data: { status: "EXPIRED" } })
+      await removeShaperRulesBestEffort(session)
+      await appDb.portalSession.update({
+        where: { id: session.id },
+        data: {
+          status: "EXPIRED",
+          shaperClientIp: null,
+          shaperDownRuleUuid: null,
+          shaperUpRuleUuid: null,
+        },
+      })
       await appDb.radiusProvisionLog.create({
         data: { sessionId: session.id, action: "CLEANUP", success: true },
       })

@@ -33,8 +33,8 @@ type FormState = {
   duration: PackageDuration
   durationMinutes: string
   priceKes: string
-  downKbps: string
-  upKbps: string
+  downMbps: string
+  upMbps: string
   radiusGroup: string
   isActive: boolean
   sortOrder: string
@@ -45,11 +45,20 @@ const EMPTY_FORM: FormState = {
   duration: "DAILY",
   durationMinutes: "",
   priceKes: "",
-  downKbps: "",
-  upKbps: "",
+  downMbps: "",
+  upMbps: "",
   radiusGroup: "",
   isActive: true,
   sortOrder: "0",
+}
+
+/** The form works in Mbps for readability; the API and DB store Kbps. */
+function kbpsToMbps(kbps: number): string {
+  return String(kbps / 1000)
+}
+
+function mbpsToKbps(mbps: string): number {
+  return Math.round(Number.parseFloat(mbps) * 1000)
 }
 
 function toFormState(pkg: AdminPackage): FormState {
@@ -58,8 +67,8 @@ function toFormState(pkg: AdminPackage): FormState {
     duration: pkg.duration,
     durationMinutes: String(pkg.durationMinutes),
     priceKes: String(pkg.priceKes),
-    downKbps: String(pkg.downKbps),
-    upKbps: String(pkg.upKbps),
+    downMbps: kbpsToMbps(pkg.downKbps),
+    upMbps: kbpsToMbps(pkg.upKbps),
     radiusGroup: pkg.radiusGroup ?? "",
     isActive: pkg.isActive,
     sortOrder: String(pkg.sortOrder),
@@ -95,7 +104,17 @@ export function PackageFormDialog(props: PackageFormDialogProps) {
       const response = await fetch(url, {
         method: props.mode === "edit" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, radiusGroup: form.radiusGroup || null }),
+        body: JSON.stringify({
+          name: form.name,
+          duration: form.duration,
+          durationMinutes: form.durationMinutes,
+          priceKes: form.priceKes,
+          downKbps: mbpsToKbps(form.downMbps),
+          upKbps: mbpsToKbps(form.upMbps),
+          radiusGroup: form.radiusGroup || null,
+          isActive: form.isActive,
+          sortOrder: form.sortOrder,
+        }),
       })
       const data: unknown = await response.json().catch(() => null)
       if (!response.ok) {
@@ -199,25 +218,27 @@ export function PackageFormDialog(props: PackageFormDialogProps) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="downKbps">Download (Kbps)</Label>
+              <Label htmlFor="downMbps">Download (Mbps)</Label>
               <Input
-                id="downKbps"
+                id="downMbps"
                 type="number"
-                min={1}
-                value={form.downKbps}
-                onChange={(event) => setForm({ ...form, downKbps: event.target.value })}
+                min={0.1}
+                step={0.1}
+                value={form.downMbps}
+                onChange={(event) => setForm({ ...form, downMbps: event.target.value })}
                 required
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="upKbps">Upload (Kbps)</Label>
+              <Label htmlFor="upMbps">Upload (Mbps)</Label>
               <Input
-                id="upKbps"
+                id="upMbps"
                 type="number"
-                min={1}
-                value={form.upKbps}
-                onChange={(event) => setForm({ ...form, upKbps: event.target.value })}
+                min={0.1}
+                step={0.1}
+                value={form.upMbps}
+                onChange={(event) => setForm({ ...form, upMbps: event.target.value })}
                 required
               />
             </div>

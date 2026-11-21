@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { appDb } from "@/lib/db/app"
 import { stkCallbackSchema, getCallbackMetadataValue } from "@/lib/schemas/mpesa"
-import { applyStkResult } from "@/lib/mpesa/apply-stk-result"
+import { applyMpesaResult } from "@/lib/payments/mpesa"
 
 // Safaricom retries on anything but a 200 with ResultCode 0, so every path below returns that —
 // errors are logged for us to investigate, never surfaced back to Safaricom as a retry trigger.
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   const mpesaReceiptNumber = getCallbackMetadataValue(parsed.data, "MpesaReceiptNumber")
   const transactionDateRaw = getCallbackMetadataValue(parsed.data, "TransactionDate")
 
-  await applyStkResult(transaction, {
+  await applyMpesaResult(transaction, {
     resultCode: stkCallback.ResultCode,
     resultDesc: stkCallback.ResultDesc,
     mpesaReceiptNumber: mpesaReceiptNumber ? String(mpesaReceiptNumber) : null,

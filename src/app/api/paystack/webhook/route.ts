@@ -3,7 +3,7 @@ import crypto from "node:crypto"
 import { env } from "@/lib/env"
 import { appDb } from "@/lib/db/app"
 import { chargeWebhookSchema } from "@/lib/schemas/paystack"
-import { applyPaystackResult } from "@/lib/paystack/apply-charge-result"
+import { applyPaystackResult } from "@/lib/payments/paystack"
 import { isTerminalPaystackStatus } from "@/lib/paystack/status"
 
 const ACK = NextResponse.json({ received: true })

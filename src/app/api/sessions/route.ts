@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server"
 import { appDb } from "@/lib/db/app"
-import { env } from "@/lib/env"
 import { createSessionSchema } from "@/lib/schemas/session"
-import { initiateStkPush } from "@/lib/mpesa/client"
-import { initiateMpesaCharge, buildPlaceholderEmail } from "@/lib/paystack/client"
+import { startPayment } from "@/lib/payments"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { provisionRadiusAccess } from "@/lib/radius/provision"
 
@@ -85,62 +83,13 @@ export async function POST(request: Request) {
       redirectUrl,
       status: "PENDING",
     },
+    include: { package: true },
   })
 
   try {
-    if (env.PAYMENT_PROVIDER === "paystack") {
-      const chargeResponse = await initiateMpesaCharge({
-        phoneNumber,
-        amountKes: pkg.priceKes,
-        email: email ?? buildPlaceholderEmail(phoneNumber),
-        accountReference: session.id,
-      })
-
-      await appDb.$transaction([
-        appDb.paystackTransaction.create({
-          data: {
-            sessionId: session.id,
-            reference: chargeResponse.data.reference,
-            amount: pkg.priceKes,
-            phoneNumber,
-            status: "INITIATED",
-          },
-        }),
-        appDb.portalSession.update({
-          where: { id: session.id },
-          data: { status: "AWAITING_PAYMENT" },
-        }),
-      ])
-    } else {
-      const stkResponse = await initiateStkPush({
-        phoneNumber,
-        amount: pkg.priceKes,
-        accountReference: session.id,
-        transactionDesc: `WiFi ${pkg.name}`,
-      })
-
-      await appDb.$transaction([
-        appDb.mpesaTransaction.create({
-          data: {
-            sessionId: session.id,
-            merchantRequestId: stkResponse.MerchantRequestID,
-            checkoutRequestId: stkResponse.CheckoutRequestID,
-            amount: pkg.priceKes,
-            phoneNumber,
-            status: "INITIATED",
-          },
-        }),
-        appDb.portalSession.update({
-          where: { id: session.id },
-          data: { status: "AWAITING_PAYMENT" },
-        }),
-      ])
-    }
-
+    await startPayment(session)
     return NextResponse.json({ sessionId: session.id, status: "AWAITING_PAYMENT" })
   } catch (error) {
-    console.error(`[sessions] ${env.PAYMENT_PROVIDER} charge initiation failed`, error)
-    await appDb.portalSession.update({ where: { id: session.id }, data: { status: "FAILED" } })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to start payment" },
       { status: 502 },

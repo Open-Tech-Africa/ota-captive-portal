@@ -99,7 +99,7 @@ POST https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query
 }
 ```
 
-A `ResultCode` of `4999` means "still processing" — not applied, the session just keeps waiting. Any other code is treated as final and run through the exact same logic the webhook uses (`src/lib/mpesa/apply-stk-result.ts`, shared by both paths so they can never diverge) — including RADIUS provisioning on success. This covers the case where the callback never arrives at all (we hit this ourselves testing against Daraja sandbox) but the payment actually went through, or definitively failed/timed out.
+A `ResultCode` of `4999` means "still processing" — not applied, the session just keeps waiting. Any other code is treated as final and run through the exact same logic the webhook uses (`applyMpesaResult` in `src/lib/payments/mpesa.ts`, shared by both paths so they can never diverge) — including RADIUS provisioning on success. This covers the case where the callback never arrives at all (we hit this ourselves testing against Daraja sandbox) but the payment actually went through, or definitively failed/timed out.
 
 Note this only resolves transactions that someone is actively polling for (i.e., a subscriber still has the splash page open). A transaction nobody's watching anymore stays `AWAITING_PAYMENT` until the cleanup job's grace period or a future visit — acceptable for now, but worth a dedicated sweep job if stale `AWAITING_PAYMENT` rows start piling up.
 

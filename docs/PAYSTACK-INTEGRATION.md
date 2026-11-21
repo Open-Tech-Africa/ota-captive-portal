@@ -68,7 +68,7 @@ Handler responsibilities (`POST /api/paystack/webhook`):
 2. Only act on `event === "charge.success"`.
 3. Look up `PaystackTransaction` by `reference`.
 4. Store the raw payload (`rawWebhook` JSON column) regardless of outcome — needed for support/debugging, same as `MpesaTransaction.rawCallback`.
-5. **Idempotency**: guard on `PaystackTransaction.status` already being terminal, no-op if so — see [`applyPaystackResult`](../src/lib/paystack/apply-charge-result.ts), shared by both the webhook and the verify fallback so they can never diverge (mirrors `src/lib/mpesa/apply-stk-result.ts`).
+5. **Idempotency**: guard on `PaystackTransaction.status` already being terminal, no-op if so — see [`applyPaystackResult`](../src/lib/payments/paystack.ts), shared by both the webhook and the verify fallback so they can never diverge; the session-side steps after it (provisioning, status) are shared with M-Pesa in [`settlePayment`](../src/lib/payments/settle.ts).
 6. Always return `200` — Paystack retries on timeouts/5xx, so acknowledge fast and log problems for us to investigate rather than surfacing them as retries.
 
 **If every webhook delivery fails signature verification** (visible in the Paystack dashboard's Webhooks > Event history, each showing `401`/`invalid signature`) — this means `PAYSTACK_SECRET_KEY` in `.env` doesn't match whatever key Paystack actually signed with, not a code bug (the handler's signature logic is standard HMAC-SHA512 over the raw body; a 100%-failure-rate points at the key, not the comparison). Check:

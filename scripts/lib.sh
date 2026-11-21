@@ -191,10 +191,12 @@ packages_table_empty() {
 # Waiting on services
 # ---------------------------------------------------------------------------------------------
 
+# Wait until the server answers with any HTTP status. A 500 still means it's up: pages that
+# read unfilled .env vars error, but the server itself (and its Prisma client) is ready.
 wait_for_http() {
   local url="$1" timeout="${2:-180}" waited=0
   info "waiting for $url (up to ${timeout}s)"
-  until curl -fsS -o /dev/null --max-time 5 "$url" 2>/dev/null; do
+  until [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$url" 2>/dev/null)" != "000" ]]; do
     if ((waited >= timeout)); then
       warn "$url didn't answer within ${timeout}s; check the logs with: docker compose logs -f $3"
       return 1

@@ -4,6 +4,10 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../../src/generated/app-client"
+  // "native" for the host (pnpm install / pnpm dev), musl for the Alpine containers. The dev
+  // container bind-mounts the repo, so it can load a client generated on the host; listing both
+  // keeps either one working no matter which side generated it.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

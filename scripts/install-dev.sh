@@ -58,6 +58,12 @@ run_script docker:web-prod:stop
 step "Starting Postgres and the dev web container"
 run_script docker:dev
 
+# The web container regenerates both Prisma clients on startup (Dockerfile `dev` CMD) into the
+# bind-mounted src/generated. Wait for the server so that has finished before seeding, which
+# loads the client; otherwise seed can race it and pick up a half-written or host-only client.
+step "Waiting for the dev server"
+wait_for_http "http://localhost:3000" 240 web || die "the dev server didn't start; see: docker compose logs web"
+
 step "Applying database migrations"
 run_script docker:dev:migrate
 
@@ -75,9 +81,6 @@ if [[ "$WITH_TUNNEL" == 1 ]]; then
   run_script docker:tunnel
   print_tunnel_url tunnel
 fi
-
-step "Waiting for the dev server"
-wait_for_http "http://localhost:3000" 240 web || true
 
 step "Done"
 info "portal:  http://localhost:3000"

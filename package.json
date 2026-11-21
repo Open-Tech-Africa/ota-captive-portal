@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "install:dev": "bash scripts/install-dev.sh",
     "install:prod": "bash scripts/install-prod.sh",
@@ -76,7 +78,8 @@
     "shadcn": "^4.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.1"
   },
   "packageManager": "pnpm@12.11.2"
 }

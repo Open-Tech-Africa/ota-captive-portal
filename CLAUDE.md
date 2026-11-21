@@ -11,6 +11,7 @@ Next.js (App Router, `src/`, Cache Components enabled), TypeScript (strict), Tai
 - `pnpm dev` — dev server on :3000
 - `pnpm check` — lint + typecheck + format check (run before every commit)
 - `pnpm lint` / `pnpm typecheck` / `pnpm format` (write) / `pnpm format:check` / `pnpm build`
+- `pnpm test` / `pnpm test:watch` — Vitest. Needs `pnpm docker:db` up: tests run against a separate `wisp_portal_test` database on it (created and migrated automatically, wiped before every test; override with `TEST_DATABASE_URL`, whose name must end in `_test`). Only external systems are faked (payment provider HTTP clients, RADIUS); test through a module's public functions, not its internals
 - `pnpm docker:db` — local Postgres only (host port 5435)
 - `pnpm db:generate` / `pnpm db:migrate` (`migrate dev`: create a migration) / `pnpm db:deploy` (`migrate deploy`: apply committed ones, what instances run) / `pnpm db:studio` — this app's own schema (`prisma/app`). Seed (`pnpm db:seed`) only an empty database: it overwrites admin edits to packages
 - `pnpm radius:pull` / `pnpm radius:generate` — sync `prisma/radius/schema.prisma` from the live daloRADIUS database (pull), or just regenerate the client after editing it by hand (generate). **Never** `prisma migrate` against the radius datasource — daloRADIUS's own SQL files own that schema.

@@ -8,7 +8,9 @@
 #
 # Re-run it after `git pull` to upgrade: it rebuilds the image, applies new migrations only, and
 # seeds only an empty database. Every docker command it runs is a package.json script (see scripts/lib.sh).
-# See docs/INSTALL.md for the full deployment runbook (RADIUS topology, OPNsense, DNS).
+# On first run it asks for every .env value production needs and refuses to start while any are
+# empty or still .env.example placeholders. See docs/INSTALL.md for the full deployment runbook
+# (RADIUS topology, OPNsense, DNS).
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -16,6 +18,8 @@ TUNNEL_MODE=""
 WITH_SEED=1
 ENV_CREATED=0
 TUNNEL_URL=""
+FORCE_CONFIGURE=0
+NO_PROMPT=0
 
 usage() {
   cat <<'EOF'
@@ -26,6 +30,8 @@ Options:
                   needs ./.cloudflared set up first, see docs/INSTALL.md
   --tunnel        Also start an ephemeral quick tunnel (pnpm docker:tunnel-prod), testing only
   --no-seed       Skip seeding the default packages
+  --configure     Ask for every .env value again, even if .env is already complete
+  --no-prompt     Never ask questions (CI/automation); fail if .env is incomplete
   -h, --help      Show this help
 EOF
 }
@@ -35,6 +41,8 @@ while (($#)); do
     --tunnel) TUNNEL_MODE="quick" ;;
     --named-tunnel) TUNNEL_MODE="named" ;;
     --no-seed) WITH_SEED=0 ;;
+    --configure) FORCE_CONFIGURE=1 ;;
+    --no-prompt) NO_PROMPT=1 ;;
     -h | --help)
       usage
       exit 0
@@ -47,22 +55,13 @@ while (($#)); do
   shift
 done
 
+URL_FROM_TUNNEL=0
+[[ "$TUNNEL_MODE" == "quick" ]] && URL_FROM_TUNNEL=1
+
 preflight
 bootstrap_env
-
-if [[ "$ENV_CREATED" == 1 ]]; then
-  info ""
-  info "A new .env was created with generated secrets. Fill in the rest (see the comments in it"
-  info "and docs/INSTALL.md), then re-run this script."
-  exit 1
-fi
-
-step "Validating .env"
-missing="$(missing_env_vars | paste -sd ' ' -)"
-[[ -z "$missing" ]] || die "these required .env vars are empty: $missing"
-placeholders="$(placeholder_env_vars | paste -sd ' ' -)"
-[[ -z "$placeholders" ]] || die "these .env vars still have .env.example placeholder values: $placeholders"
-info "required vars are set"
+maybe_configure_env prod
+validate_env prod
 
 if [[ "$TUNNEL_MODE" == "named" && ! -d .cloudflared ]]; then
   die "--named-tunnel needs ./.cloudflared (credentials + config.yml); see docs/INSTALL.md"
@@ -94,6 +93,13 @@ case "$TUNNEL_MODE" in
     warn "quick tunnel URLs change on every restart; use --named-tunnel for a real deployment"
     run_script docker:tunnel-prod
     print_tunnel_url tunnel-prod
+    if [[ -n "$TUNNEL_URL" ]]; then
+      step "Pointing the portal at the tunnel URL"
+      apply_tunnel_url "$TUNNEL_URL"
+      run_script docker:web-prod:recreate
+    else
+      warn "APP_BASE_URL wasn't updated; payment callbacks won't reach this instance"
+    fi
     ;;
   named)
     step "Starting the named tunnel"
@@ -108,9 +114,7 @@ step "Done"
 info "local:   http://localhost:3000"
 info "public:  $(env_get APP_BASE_URL)"
 info "logs:    docker compose logs -f web-prod"
-if [[ -n "$TUNNEL_URL" ]]; then
-  info "tunnel:  $TUNNEL_URL"
-  info "         update APP_BASE_URL (and MPESA_CALLBACK_URL) in .env to match, then run:"
-  info "         pnpm docker:web-prod:recreate"
-fi
+[[ -n "$TUNNEL_URL" ]] && info "         (quick tunnel: this URL changes every time the tunnel restarts)"
+print_payment_reminder
 info "upgrade: git pull && ./scripts/install-prod.sh"
+info "change settings: ./scripts/install-prod.sh --configure"

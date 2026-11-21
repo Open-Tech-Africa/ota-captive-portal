@@ -49,7 +49,9 @@ const serverEnvSchema = z
     // reason OPNSENSE-SETUP.md's step 2 keeps the client-facing portal on HTTP-only) — default to
     // skipping TLS verification for this one admin-API client. Set to false if you've put a real
     // cert on OPNsense's GUI.
-    OPNSENSE_API_ALLOW_SELF_SIGNED: z.coerce.boolean().default(true),
+    // stringbool, not coerce.boolean: coerce turns any non-empty string, "false" included, into
+    // true.
+    OPNSENSE_API_ALLOW_SELF_SIGNED: z.stringbool().default(true),
     // OPNsense's own interface identifier (e.g. "opt1") for the hotspot VLAN/interface — NOT an IP,
     // and not necessarily the same as what Services > Captive Portal > Administration shows; check
     // Interfaces > Overview. Required for the Traffic Shaper rules that enforce package speeds —
@@ -114,8 +116,18 @@ const serverEnvSchema = z
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>
 
+/**
+ * `KEY=` in .env arrives as "", which `.optional()` rejects (it only accepts undefined). Treat
+ * an empty value as unset, so leaving an optional var blank in .env means "not configured".
+ */
+function withoutEmptyValues(source: NodeJS.ProcessEnv): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(source).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  )
+}
+
 /** Validated server environment. Fails fast at startup with a readable message. */
-export const env: ServerEnv = serverEnvSchema.parse(process.env)
+export const env: ServerEnv = serverEnvSchema.parse(withoutEmptyValues(process.env))
 
 export const mpesaBaseUrl =
   env.MPESA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"

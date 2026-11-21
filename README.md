@@ -100,7 +100,9 @@ That's it — Postgres runs in a container, and you don't need a real RADIUS/OPN
 
 ## One-command install
 
-Only Docker is required on the host (pnpm is optional; without it the scripts read `package.json` with `jq`). Each installer runs the `docker:*` scripts from `package.json`, creates `.env` from `.env.example` with generated secrets if it's missing, applies migrations, seeds packages into an empty database, and waits for the app to answer. Both are safe to re-run.
+Only Docker is required on the host (pnpm is optional; without it the scripts read `package.json` with `jq`). Each installer runs the `docker:*` scripts from `package.json`, applies migrations, seeds packages into an empty database, and waits for the app to answer. Both are safe to re-run.
+
+On first run (or whenever `.env` is incomplete) the installer creates `.env` with generated secrets and asks for every value the app needs: hotspot name, public URL, payment provider and its keys (Paystack, or the M-Pesa Daraja set), RADIUS database URL, OPNsense portal URL, admin password, and optionally the OPNsense admin API and Traffic Shaper interface. Press Enter to keep a value; secrets are typed hidden. Testing without WISP infrastructure? Keep the RADIUS and OPNsense placeholders. With `--tunnel`, the public URL is filled in from the tunnel automatically. Re-run with `--configure` to change values later, or `--no-prompt` for automation.
 
 ```bash
 ./scripts/install-dev.sh                  # dev: Postgres + hot-reload web on :3000   (pnpm install:dev)
@@ -108,7 +110,7 @@ Only Docker is required on the host (pnpm is optional; without it the scripts re
 ./scripts/install-prod.sh --named-tunnel  # prod: web-prod + your named tunnel        (pnpm install:prod)
 ```
 
-`install-prod.sh` refuses to start until every required `.env` var is filled in and no `.env.example` placeholders are left. Re-run it after `git pull` to upgrade. The manual steps below show what the scripts do.
+`install-prod.sh` refuses to start while any required `.env` var is empty or still an `.env.example` placeholder. Re-run it after `git pull` to upgrade. The manual steps below show what the scripts do.
 
 ## Quickstart (try it now, no domain needed)
 

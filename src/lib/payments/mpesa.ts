@@ -76,12 +76,13 @@ export async function applyMpesaResult(
   transaction: MpesaTransactionWithSession,
   result: MpesaResult,
 ): Promise<void> {
-  if (transaction.status !== "INITIATED") return
-
   const outcome = mapResultCodeToStatus(result.resultCode)
 
-  await appDb.mpesaTransaction.update({
-    where: { id: transaction.id },
+  // Store the result only if no other path has stored one yet. The check and the write must be
+  // a single UPDATE: checking `transaction.status` first would read a copy loaded earlier, which
+  // the webhook and the polling fallback can both hold at once.
+  const { count: storedCount } = await appDb.mpesaTransaction.updateMany({
+    where: { id: transaction.id, status: "INITIATED" },
     data: {
       status: outcome,
       resultCode: result.resultCode,
@@ -91,6 +92,7 @@ export async function applyMpesaResult(
       rawCallback: (result.raw as object | undefined) ?? undefined,
     },
   })
+  if (storedCount === 0) return
 
   await settlePayment(transaction.session, outcome)
 }

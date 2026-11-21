@@ -234,6 +234,37 @@ describe("applying a final M-Pesa result", () => {
     expect(stored.transaction?.status).toBe("SUCCESS")
     expect(stored.radiusPasswordOneTime).toBeNull()
   })
+  it("applies only one result when the webhook and polling fallback arrive at the same time", async () => {
+    const session = await startedSession("mpesa")
+    // Both paths load the transaction before either has written anything, so both see INITIATED.
+    const [webhookCopy, fallbackCopy] = await Promise.all([
+      loadMpesaTransaction(),
+      loadMpesaTransaction(),
+    ])
+
+    await Promise.all([
+      applyMpesaResult(webhookCopy, { resultCode: 0, resultDesc: "OK" }),
+      applyMpesaResult(fallbackCopy, { resultCode: 0, resultDesc: "OK" }),
+    ])
+
+    expect(provisionRadiusAccess).toHaveBeenCalledTimes(1)
+    expect((await loadSession(session.id)).status).toBe("PROVISIONED")
+  })
+
+  it("ignores a later result applied from a copy loaded before the first was stored", async () => {
+    const session = await startedSession("mpesa")
+    const staleCopy = await loadMpesaTransaction()
+
+    await applyMpesaResult(await loadMpesaTransaction(), { resultCode: 0, resultDesc: "OK" })
+    await applyMpesaResult(staleCopy, {
+      resultCode: MPESA_CANCELLED_BY_USER,
+      resultDesc: "Request cancelled by user",
+    })
+
+    const stored = await loadSession(session.id)
+    expect(stored.status).toBe("PROVISIONED")
+    expect(stored.transaction?.status).toBe("SUCCESS")
+  })
 })
 
 describe("applying a final Paystack result", () => {
@@ -258,6 +289,19 @@ describe("applying a final Paystack result", () => {
 
     expect(provisionRadiusAccess).not.toHaveBeenCalled()
     expect((await loadSession(session.id)).status).toBe("CANCELLED")
+  })
+
+  it("ignores a later result applied from a copy loaded before the first was stored", async () => {
+    const session = await startedSession("paystack")
+    const staleCopy = await loadPaystackTransaction()
+
+    await applyPaystackResult(await loadPaystackTransaction(), { status: "success" })
+    await applyPaystackResult(staleCopy, { status: "reversed" })
+
+    expect(provisionRadiusAccess).toHaveBeenCalledTimes(1)
+    const stored = await loadSession(session.id)
+    expect(stored.status).toBe("PROVISIONED")
+    expect(stored.paystackTransaction?.status).toBe("SUCCESS")
   })
 })
 

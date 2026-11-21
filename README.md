@@ -98,6 +98,18 @@ To try the app (Quickstart below):
 
 That's it — Postgres runs in a container, and you don't need a real RADIUS/OPNsense install or a domain name to see the payment flow work end to end (see "What doesn't need real infra" below). To wire this up to an actual hotspot, you'll additionally need the setup in [`docs/INSTALL.md`](docs/INSTALL.md).
 
+## One-command install
+
+Only Docker is required on the host (pnpm is optional; without it the scripts read `package.json` with `jq`). Each installer runs the `docker:*` scripts from `package.json`, creates `.env` from `.env.example` with generated secrets if it's missing, applies migrations, seeds packages into an empty database, and waits for the app to answer. Both are safe to re-run.
+
+```bash
+./scripts/install-dev.sh                  # dev: Postgres + hot-reload web on :3000   (pnpm install:dev)
+./scripts/install-dev.sh --tunnel         # ...plus an ephemeral trycloudflare.com URL
+./scripts/install-prod.sh --named-tunnel  # prod: web-prod + your named tunnel        (pnpm install:prod)
+```
+
+`install-prod.sh` refuses to start until every required `.env` var is filled in and no `.env.example` placeholders are left. Re-run it after `git pull` to upgrade. The manual steps below show what the scripts do.
+
 ## Quickstart (try it now, no domain needed)
 
 ```bash
@@ -117,11 +129,14 @@ Edit `.env`:
 **1. Start Postgres and the app, then set up the schema:**
 
 ```bash
-pnpm docker:db
-pnpm docker:web:build
-docker compose exec -T web pnpm db:migrate --name init
-docker compose exec -T web pnpm db:seed
+pnpm docker:dev            # docker:db + docker:web:build
+pnpm docker:dev:migrate    # prisma migrate deploy: applies the migrations committed in prisma/app/migrations
+pnpm docker:dev:seed       # default packages; fresh database only
 ```
+
+> **Only seed an empty database.** The seed upserts the default packages, so re-running it overwrites any price/speed changes made in `/admin/packages`. `./scripts/install-dev.sh` checks this for you and skips the seed when packages already exist.
+>
+> `pnpm db:migrate` (`prisma migrate dev`) is for *creating* a new migration after you edit `prisma/app/schema.prisma` — not for setting up an instance.
 
 Confirm it's up: `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/` → expect `200`.
 

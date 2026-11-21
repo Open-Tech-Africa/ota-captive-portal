@@ -196,11 +196,21 @@ image, using the same `.env`/database, without starting or leaving behind a long
 container:
 
 ```bash
-docker compose run --rm --build web pnpm db:migrate --name init
-docker compose run --rm web pnpm db:seed
+pnpm docker:prod:migrate   # docker compose run --rm --build web pnpm db:deploy
+pnpm docker:prod:seed      # docker compose run --rm web pnpm db:seed — first install only
 ```
 
-(Drop `--name init` after the first instance — that flag is only for naming a brand-new migration; subsequent instances just need `pnpm db:migrate` to apply the migrations already committed to the repo, not create new ones.)
+`docker:prod:migrate` runs `prisma migrate deploy`, which applies the migrations already committed in
+`prisma/app/migrations` and never creates new ones or prompts — the same command on every instance,
+first install or upgrade. (`pnpm db:migrate` is `prisma migrate dev`: a development tool for
+*creating* a migration after editing the schema. Don't run it against a deployment.)
+
+**Seed only once, on an empty database.** The seed upserts the default packages, so re-running it
+overwrites any price/speed changes made since in `/admin/packages`.
+
+> `./scripts/install-prod.sh` does §7–§9 in one go (stop `web`, migrate, seed only if the
+> `Package` table is empty, build and start `web-prod`, optional `--named-tunnel`, wait for `:3000`)
+> after checking `.env` has no empty required vars or `.env.example` placeholders left.
 
 ## 9. Verify
 
@@ -220,10 +230,12 @@ This app being up doesn't do anything until OPNsense redirects unauthenticated c
 `git pull`, then:
 
 ```bash
+pnpm docker:prod:migrate
 pnpm docker:web-prod:build
 ```
 
-If `prisma/app/schema.prisma` changed, also run the migrate command again (§8) before restarting.
+`docker:prod:migrate` is a no-op when there are no new migrations, so it's safe to always run it.
+Don't re-run the seed. Or do both with `./scripts/install-prod.sh`, which is safe to re-run.
 
 ## Troubleshooting
 

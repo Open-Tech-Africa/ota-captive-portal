@@ -99,80 +99,11 @@ preflight() {
 }
 
 # ---------------------------------------------------------------------------------------------
-# .env bootstrap and validation
+# .env: reading, writing, interactive setup and validation live in scripts/env.sh
 # ---------------------------------------------------------------------------------------------
 
-env_get() {
-  # Value of KEY in .env, with surrounding quotes and trailing `# comment` stripped.
-  local line
-  line="$(grep -E "^$1=" .env | tail -n1 || true)"
-  line="${line#*=}"
-  line="${line%%#*}"
-  line="$(printf '%s' "$line" | sed -E 's/[[:space:]]+$//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')"
-  printf '%s' "$line"
-}
-
-env_set() {
-  local key="$1" value="$2"
-  local escaped
-  escaped="$(printf '%s' "$value" | sed -e 's/[\/&|]/\\&/g')"
-  if grep -qE "^$key=" .env; then
-    sed -i.bak -E "s|^$key=.*|$key=$escaped|" .env && rm -f .env.bak
-  else
-    printf '%s=%s\n' "$key" "$value" >>.env
-  fi
-}
-
-# Create .env from .env.example if it doesn't exist, generating fresh secrets.
-bootstrap_env() {
-  step "Preparing .env"
-  if [[ -f .env ]]; then
-    info ".env already exists, leaving it alone"
-  else
-    cp .env.example .env
-    chmod 600 .env
-    env_set CRON_SECRET "$(openssl rand -base64 32)"
-    env_set ADMIN_PASSWORD "$(openssl rand -base64 18)"
-    info "created .env from .env.example (chmod 600)"
-    info "generated CRON_SECRET and ADMIN_PASSWORD"
-    ENV_CREATED=1
-  fi
-
-  # Older .env files may still be missing these; fill them so the app can boot.
-  if [[ -z "$(env_get CRON_SECRET)" ]]; then
-    env_set CRON_SECRET "$(openssl rand -base64 32)"
-    info "CRON_SECRET was empty, generated one"
-  fi
-  if [[ -z "$(env_get ADMIN_PASSWORD)" ]]; then
-    env_set ADMIN_PASSWORD "$(openssl rand -base64 18)"
-    info "ADMIN_PASSWORD was empty, generated one"
-  fi
-}
-
-# Print the names of required vars (per src/lib/env.ts) that are empty in .env.
-missing_env_vars() {
-  local provider key
-  local -a required=(RADIUS_DATABASE_URL APP_BASE_URL OPNSENSE_CAPTIVE_PORTAL_BASE_URL)
-  provider="$(env_get PAYMENT_PROVIDER)"
-  if [[ "${provider:-mpesa}" == "mpesa" ]]; then
-    required+=(MPESA_ENV MPESA_CONSUMER_KEY MPESA_CONSUMER_SECRET MPESA_SHORTCODE MPESA_PASSKEY MPESA_CALLBACK_URL)
-  else
-    required+=(PAYSTACK_SECRET_KEY)
-  fi
-  for key in "${required[@]}"; do
-    [[ -n "$(env_get "$key")" ]] || printf '%s\n' "$key"
-  done
-}
-
-# Print the names of vars still set to an .env.example placeholder.
-placeholder_env_vars() {
-  local key
-  for key in APP_BASE_URL MPESA_CALLBACK_URL; do
-    [[ "$(env_get "$key")" == *portal.example.com* ]] && printf '%s\n' "$key"
-  done
-  [[ "$(env_get RADIUS_DATABASE_URL)" == *wispportal:changeme@* ]] && printf '%s\n' RADIUS_DATABASE_URL
-  return 0
-}
+# shellcheck source=scripts/env.sh
+source "$REPO_ROOT/scripts/env.sh"
 
 # ---------------------------------------------------------------------------------------------
 # Database state

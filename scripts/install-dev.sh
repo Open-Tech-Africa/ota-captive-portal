@@ -5,6 +5,9 @@
 #   ./scripts/install-dev.sh            # or: pnpm install:dev
 #   ./scripts/install-dev.sh --tunnel   # also start a trycloudflare.com quick tunnel
 #
+# On a fresh checkout it asks for every .env value it needs (payment keys, URLs, ...); RADIUS and
+# OPNsense can stay placeholders for local testing.
+#
 # Safe to re-run: it rebuilds what changed, applies only new migrations, and seeds only an
 # empty database.
 # Every docker command it runs is a package.json script (see scripts/lib.sh).
@@ -15,6 +18,8 @@ WITH_TUNNEL=0
 WITH_SEED=1
 ENV_CREATED=0
 TUNNEL_URL=""
+FORCE_CONFIGURE=0
+NO_PROMPT=0
 
 usage() {
   cat <<'EOF'
@@ -23,6 +28,8 @@ Usage: scripts/install-dev.sh [options]
 Options:
   --tunnel     Also start an ephemeral Cloudflare quick tunnel (pnpm docker:tunnel)
   --no-seed    Skip seeding the default packages
+  --configure  Ask for every .env value again, even if .env is already complete
+  --no-prompt  Never ask questions (CI/automation); use .env as it is
   -h, --help   Show this help
 EOF
 }
@@ -31,6 +38,8 @@ while (($#)); do
   case "$1" in
     --tunnel) WITH_TUNNEL=1 ;;
     --no-seed) WITH_SEED=0 ;;
+    --configure) FORCE_CONFIGURE=1 ;;
+    --no-prompt) NO_PROMPT=1 ;;
     -h | --help)
       usage
       exit 0
@@ -43,14 +52,12 @@ while (($#)); do
   shift
 done
 
+URL_FROM_TUNNEL="$WITH_TUNNEL"
+
 preflight
 bootstrap_env
-
-missing="$(missing_env_vars | paste -sd ' ' -)"
-if [[ -n "$missing" ]]; then
-  warn "these required .env vars are empty: $missing"
-  warn "the dev server will start, but pages that read env will error until you fill them in"
-fi
+maybe_configure_env dev
+validate_env dev
 
 step "Stopping web-prod if it's running (it shares port 3000)"
 run_script docker:web-prod:stop
@@ -80,6 +87,12 @@ if [[ "$WITH_TUNNEL" == 1 ]]; then
   step "Starting the quick tunnel"
   run_script docker:tunnel
   print_tunnel_url tunnel
+  if [[ -n "$TUNNEL_URL" ]]; then
+    step "Pointing the portal at the tunnel URL"
+    apply_tunnel_url "$TUNNEL_URL"
+    run_script docker:web:recreate
+    wait_for_http "http://localhost:3000" 240 web || true
+  fi
 fi
 
 step "Done"
@@ -87,12 +100,7 @@ info "portal:  http://localhost:3000"
 info "admin:   http://localhost:3000/admin  (password: ADMIN_PASSWORD in .env)"
 info "logs:    docker compose logs -f web"
 if [[ -n "$TUNNEL_URL" ]]; then
-  info "tunnel:  $TUNNEL_URL"
-  info "         put it in .env as APP_BASE_URL (and MPESA_CALLBACK_URL + /api/mpesa/callback),"
-  info "         then run: pnpm docker:web:recreate"
+  info "public:  $TUNNEL_URL  (changes every time the tunnel restarts; re-run with --tunnel)"
 fi
-if [[ "$ENV_CREATED" == 1 ]]; then
-  info ""
-  info "A new .env was created. Fill in your payment, RADIUS and OPNsense values, then run"
-  info "pnpm docker:web:recreate so the container picks them up."
-fi
+print_payment_reminder
+info "change settings: ./scripts/install-dev.sh --configure"

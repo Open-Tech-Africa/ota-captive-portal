@@ -120,7 +120,7 @@ Both payment rails need a real, publicly reachable HTTPS URL to reach this app �
 The same ephemeral Cloudflare quick tunnel the [README's Quickstart](../README.md#quickstart-try-it-now-no-domain-needed) uses, pointed at `web-prod` instead of the dev `web` service — nothing to set up beforehand:
 
 ```bash
-docker compose --profile tunnel-prod up -d tunnel-prod
+pnpm docker:tunnel-prod
 docker compose logs tunnel-prod | grep trycloudflare
 ```
 
@@ -170,32 +170,47 @@ Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` (§5) to `https://<your-su
 
 ## 7. Build and start
 
-Whichever tunnel you set up in §6, naming the services explicitly like this — rather than a bare
-`up -d` — avoids also starting the dev `web` service, which would otherwise collide with
-`web-prod` on port 3000.
-
-**With the quick tunnel:**
+One atomic `pnpm` script per service — each only ever touches its own container, so there's no
+risk of accidentally also starting the dev `web` service (which would collide with `web-prod` on
+port 3000):
 
 ```bash
-docker compose up -d db
-docker compose --profile prod --profile tunnel-prod up -d --build web-prod tunnel-prod
+pnpm docker:db
+pnpm docker:web-prod:build
 ```
 
-**With the named tunnel:**
+Then whichever tunnel you set up in §6:
 
 ```bash
-docker compose up -d db
-docker compose --profile prod --profile named-tunnel up -d --build web-prod named-tunnel
+pnpm docker:tunnel-prod       # quick tunnel
+# or
+pnpm docker:named-tunnel      # named tunnel
 ```
 
 ## 8. Run migrations and seed packages
 
+Run these against the **dev** `web` service, not `web-prod` — `web-prod`'s image is the trimmed
+Next.js standalone output ([`Dockerfile`](../Dockerfile)'s `runner` stage), which has no `pnpm` or
+Prisma CLI in it at all. `docker compose run` spins up a one-off container from the full `web`
+image, using the same `.env`/database, without starting or leaving behind a long-running `web`
+container:
+
 ```bash
-docker compose exec -T web-prod pnpm db:migrate --name init
-docker compose exec -T web-prod pnpm db:seed
+pnpm docker:prod:migrate   # docker compose run --rm --build web pnpm db:deploy
+pnpm docker:prod:seed      # docker compose run --rm web pnpm db:seed — first install only
 ```
 
-(Drop `--name init` after the first instance — that flag is only for naming a brand-new migration; subsequent instances just need `pnpm db:migrate` to apply the migrations already committed to the repo, not create new ones.)
+`docker:prod:migrate` runs `prisma migrate deploy`, which applies the migrations already committed in
+`prisma/app/migrations` and never creates new ones or prompts — the same command on every instance,
+first install or upgrade. (`pnpm db:migrate` is `prisma migrate dev`: a development tool for
+*creating* a migration after editing the schema. Don't run it against a deployment.)
+
+**Seed only once, on an empty database.** The seed upserts the default packages, so re-running it
+overwrites any price/speed changes made since in `/admin/packages`.
+
+> `./scripts/install-prod.sh` does §7–§9 in one go (stop `web`, migrate, seed only if the
+> `Package` table is empty, build and start `web-prod`, optional `--named-tunnel`, wait for `:3000`)
+> after checking `.env` has no empty required vars or `.env.example` placeholders left.
 
 ## 9. Verify
 
@@ -215,10 +230,12 @@ This app being up doesn't do anything until OPNsense redirects unauthenticated c
 `git pull`, then:
 
 ```bash
-docker compose --profile prod up -d --build web-prod
+pnpm docker:prod:migrate
+pnpm docker:web-prod:build
 ```
 
-If `prisma/app/schema.prisma` changed, also run `pnpm db:migrate` again (§8) before restarting.
+`docker:prod:migrate` is a no-op when there are no new migrations, so it's safe to always run it.
+Don't re-run the seed. Or do both with `./scripts/install-prod.sh`, which is safe to re-run.
 
 ## Troubleshooting
 
@@ -226,3 +243,4 @@ If `prisma/app/schema.prisma` changed, also run `pnpm db:migrate` again (§8) be
 - **The app can't reach MariaDB at all (topology A)** — almost always MariaDB's `bind-address` still being `127.0.0.1`-only, which rejects anything arriving over Docker's bridge network regardless of what hostname you point `RADIUS_DATABASE_URL` at. Confirm with `mysql -h <docker-bridge-gateway-ip> -u wispportal -p raddb` from the host itself; if that fails the same way, it's the bind-address, not Docker or this app.
 - **Prisma errors about missing/unexpected columns on the radius side** — the hand-maintained `prisma/radius/schema.prisma` doesn't match this site's actual daloRADIUS schema. Run `pnpm radius:pull` against the real `RADIUS_DATABASE_URL` and commit the diff.
 - **RADIUS provisioning fails silently (session ends `FAILED`)** — check `RadiusProvisionLog` rows in the app's own Postgres DB for the actual error; it's logged there, not just swallowed.
+- **Changed `.env` but the app still behaves like the old values** — `docker compose restart` does **not** reload `env_file` (verified empirically: the container keeps the environment it was created with). Recreate the container instead: `pnpm docker:web-prod:recreate` (or `pnpm docker:web:recreate` in dev).

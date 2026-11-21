@@ -11,15 +11,23 @@ Next.js (App Router, `src/`, Cache Components enabled), TypeScript (strict), Tai
 - `pnpm dev` — dev server on :3000
 - `pnpm check` — lint + typecheck + format check (run before every commit)
 - `pnpm lint` / `pnpm typecheck` / `pnpm format` (write) / `pnpm format:check` / `pnpm build`
-- `docker compose up -d db` — local Postgres only (host port 5435)
-- `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:studio` — this app's own schema (`prisma/app`)
+- `pnpm docker:db` — local Postgres only (host port 5435)
+- `pnpm db:generate` / `pnpm db:migrate` (`migrate dev`: create a migration) / `pnpm db:deploy` (`migrate deploy`: apply committed ones, what instances run) / `pnpm db:studio` — this app's own schema (`prisma/app`). Seed (`pnpm db:seed`) only an empty database: it overwrites admin edits to packages
 - `pnpm radius:pull` / `pnpm radius:generate` — sync `prisma/radius/schema.prisma` from the live daloRADIUS database (pull), or just regenerate the client after editing it by hand (generate). **Never** `prisma migrate` against the radius datasource — daloRADIUS's own SQL files own that schema.
-- `pnpm docker:dev` — db + dev container with hot reload, no tunnel, `:3000` on the host
-- `pnpm docker:dev:tunnel` — the above, plus a quick ephemeral Cloudflare tunnel pointed at it
-- `pnpm docker:prod` — db + production image (`web-prod`, the `runner` build target), no tunnel, `:3000` on the host — only one of `web`/`web-prod` can be up at a time, both bind `:3000`
-- `pnpm docker:prod:tunnel` — the above, plus a quick ephemeral Cloudflare tunnel (new random URL every restart — fine for a one-off test, never for a real deployment since callback URLs would keep changing)
-- `pnpm docker:prod:named-tunnel` — the above, plus the stable named Cloudflare Tunnel (see `docs/INSTALL.md`'s "Using your own domain" for one-time setup) — what a real deployment should run
-- `pnpm docker:clean` — tear down all compose services, **including volumes** (wipes the local `db` data) — `docker compose down --volumes --remove-orphans`
+- `pnpm install:dev` / `pnpm install:prod` (or `./scripts/install-dev.sh` / `./scripts/install-prod.sh`, no pnpm needed) — one-command installers that chain the `docker:*` scripts below plus `.env` bootstrap, migrations (`docker:dev:migrate` / `docker:prod:migrate`, both `prisma migrate deploy`) and seeding an empty database. Flags: `--tunnel`, `--named-tunnel` (prod), `--no-seed`. Keep docker commands in `package.json`; the scripts must only call them by name via `run_script` in `scripts/lib.sh`.
+- Docker — one atomic script per action; combine with `&&` when you want more than one (e.g. rebuild `web-prod` without touching `db` or a tunnel: `pnpm docker:web-prod:build`):
+  - `pnpm docker:db` — Postgres only
+  - `pnpm docker:web:build` — build (if needed) and (re)start the dev container, hot reload, `:3000`
+  - `pnpm docker:web:recreate` — recreate the dev container without rebuilding the image, to pick up a `.env` change (`docker compose restart` does **not** reload `env_file` — only recreating the container does; verified empirically)
+  - `pnpm docker:web:stop` — stop it
+  - `pnpm docker:web-prod:build` — build (if needed) and (re)start the production image (the `runner` build target) — only one of `web`/`web-prod` can be up at a time, both bind `:3000`
+  - `pnpm docker:web-prod:recreate` — recreate it without rebuilding, to pick up a `.env` change
+  - `pnpm docker:web-prod:stop` — stop it
+  - `pnpm docker:tunnel` — quick ephemeral Cloudflare tunnel pointed at the dev container
+  - `pnpm docker:tunnel-prod` — quick ephemeral Cloudflare tunnel pointed at `web-prod` (new random URL every restart — fine for a one-off test, never a real deployment since callback URLs would keep changing)
+  - `pnpm docker:named-tunnel` — the stable named Cloudflare Tunnel pointed at `web-prod` (see `docs/INSTALL.md`'s "Using your own domain" for one-time setup) — what a real deployment should run
+  - `pnpm docker:clean` — tear down all compose services, **including volumes** (wipes the local `db` data)
+  - Shortcuts, each just the atomic scripts joined with `&&`: `pnpm docker:dev` (`docker:db` + `docker:web:build`), `pnpm docker:dev:tunnel` (+ `docker:tunnel`), `pnpm docker:prod` (`docker:db` + `docker:web-prod:build`), `pnpm docker:prod:tunnel` (+ `docker:tunnel-prod`), `pnpm docker:prod:named-tunnel` (+ `docker:named-tunnel`)
 
 ## Git workflow
 - `master` is always releasable. Never commit feature work directly to it after the initial scaffold.

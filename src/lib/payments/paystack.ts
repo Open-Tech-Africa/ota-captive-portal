@@ -80,12 +80,13 @@ export async function applyPaystackResult(
   transaction: PaystackTransactionWithSession,
   result: PaystackResult,
 ): Promise<void> {
-  if (transaction.status !== "INITIATED") return
-
   const outcome = mapPaystackStatus(result.status)
 
-  await appDb.paystackTransaction.update({
-    where: { id: transaction.id },
+  // Store the result only if no other path has stored one yet. The check and the write must be
+  // a single UPDATE: checking `transaction.status` first would read a copy loaded earlier, which
+  // the webhook and the polling fallback can both hold at once.
+  const { count: storedCount } = await appDb.paystackTransaction.updateMany({
+    where: { id: transaction.id, status: "INITIATED" },
     data: {
       status: outcome,
       gatewayResponse: result.gatewayResponse ?? undefined,
@@ -93,6 +94,7 @@ export async function applyPaystackResult(
       rawWebhook: (result.raw as object | undefined) ?? undefined,
     },
   })
+  if (storedCount === 0) return
 
   await settlePayment(transaction.session, outcome)
 }

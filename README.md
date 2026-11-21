@@ -117,8 +117,8 @@ Edit `.env`:
 **1. Start Postgres and the app, then set up the schema:**
 
 ```bash
-docker compose up -d db
-docker compose up -d --build web
+pnpm docker:db
+pnpm docker:web:build
 docker compose exec -T web pnpm db:migrate --name init
 docker compose exec -T web pnpm db:seed
 ```
@@ -128,14 +128,14 @@ Confirm it's up: `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000
 **2. Get a public HTTPS URL** (M-Pesa and Paystack both need to reach this app over the internet to deliver their payment callback/webhook — `localhost` doesn't work for either):
 
 ```bash
-docker compose --profile tunnel up -d
+pnpm docker:tunnel
 docker compose logs tunnel | grep trycloudflare
 ```
 
-Copy the printed `https://<random>.trycloudflare.com` URL. Put it in `.env` as `APP_BASE_URL`, and as `MPESA_CALLBACK_URL` with `/api/mpesa/callback` appended, then:
+Copy the printed `https://<random>.trycloudflare.com` URL. Put it in `.env` as `APP_BASE_URL`, and as `MPESA_CALLBACK_URL` with `/api/mpesa/callback` appended, then recreate the container so it picks up the new `.env` values (`docker compose restart` doesn't reload `env_file` — only recreating the container does):
 
 ```bash
-docker compose up -d --force-recreate web
+pnpm docker:web:recreate
 ```
 
 If you're using Paystack, there's no per-request callback field — instead set the webhook URL in the Paystack dashboard (**Settings > API Keys & Webhooks**) to `<tunnel-url>/api/paystack/webhook`.
@@ -152,50 +152,23 @@ Everything above runs against this app's own Postgres only. Payment will succeed
 
 > **Trying the production build instead of dev mode?** The `web` service above runs `pnpm dev` with hot reload, built from the [`Dockerfile`](Dockerfile)'s `dev` stage. There's also a `web-prod` service, built from the same Dockerfile's multi-stage `build`/`runner` stages (Next.js standalone output, no dev dependencies, runs as a non-root user) — the same image used in a real deployment (see [`docs/INSTALL.md`](docs/INSTALL.md)). To run it locally instead:
 > ```bash
-> docker compose --profile prod up -d --build web-prod
+> pnpm docker:web:stop
+> pnpm docker:web-prod:build
 > ```
-> Only one of `web` / `web-prod` can be up at a time (both bind port 3000) — stop the other first with `docker compose stop web` (or `web-prod`).
+> Only one of `web` / `web-prod` can be up at a time (both bind port 3000) — `pnpm docker:web:stop` / `pnpm docker:web-prod:stop` stops either one.
 
 ## Using your own domain instead of the ephemeral tunnel
 
 Once you're past "just trying it out," swap the ephemeral tunnel for a **named Cloudflare Tunnel** on a domain you control — same URL across restarts, sitting behind Cloudflare's network rather than a random public hostname. Needs a domain already added to a (free) Cloudflare account.
 
-```bash
-mkdir -p .cloudflared
-
-# 1. Authenticate — opens a URL; approve it against the Cloudflare account that manages your domain
-docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest tunnel login
-
-# 2. Create the tunnel (any name)
-docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest tunnel create wisp-portal
-
-# 3. Route your subdomain to it — adds the DNS record for you
-docker run --rm -v "$(pwd)/.cloudflared:/home/nonroot/.cloudflared" cloudflare/cloudflared:latest \
-  tunnel route dns wisp-portal portal.yourdomain.com
-```
-
-Write `.cloudflared/config.yml` (the tunnel ID/credentials filename come from step 2's output):
-
-```yaml
-tunnel: <tunnel-id>
-credentials-file: /home/nonroot/.cloudflared/<tunnel-id>.json
-
-ingress:
-  - hostname: portal.yourdomain.com
-    service: http://web:3000
-  - service: http_status:404
-```
-
-Set `APP_BASE_URL` and `MPESA_CALLBACK_URL` in `.env` to `https://portal.yourdomain.com` (and `.../api/mpesa/callback` for the latter), then:
+See [`docs/INSTALL.md`'s "Alternative: named tunnel"](docs/INSTALL.md#alternative-named-tunnel-stable-domain-no-random-restart-url) for the one-time setup walkthrough (authenticate, create the tunnel, route the subdomain, write `.cloudflared/config.yml`) — it's written for the production `web-prod` service, but for this dev Quickstart just point `config.yml`'s `service:` at `http://web:3000` instead. Once that's done:
 
 ```bash
-docker compose up -d --force-recreate web
-docker compose --profile named-tunnel up -d
+pnpm docker:web:recreate
+pnpm docker:named-tunnel
 ```
 
-`.cloudflared/` is gitignored — it holds real credentials; set it up fresh per deployment, never commit it.
-
-> **Running on the same host as FreeRADIUS/daloRADIUS** (the real-deployment topology, recommended for an actual hotspot site)? Same compose file — point `RADIUS_DATABASE_URL` at `host.docker.internal:3306` so the container reaches MariaDB on the host instead of a VPN/tunnel address, and use the production `web-prod` service (`service: http://web-prod:3000` in the tunnel's ingress, `--profile prod up -d --build web-prod`) rather than the dev `web` service shown above. See [`docs/INSTALL.md`](docs/INSTALL.md) for that full runbook.
+> **Running on the same host as FreeRADIUS/daloRADIUS** (the real-deployment topology, recommended for an actual hotspot site)? That's exactly what [`docs/INSTALL.md`](docs/INSTALL.md) walks through end to end, using the production `web-prod` service instead of the dev `web` service shown above.
 
 ## Running a new instance against a real daloRADIUS install
 

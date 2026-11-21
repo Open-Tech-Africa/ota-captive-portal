@@ -11,16 +11,16 @@ Next.js (App Router, `src/`, Cache Components enabled), TypeScript (strict), Tai
 - `pnpm dev` — dev server on :3000
 - `pnpm check` — lint + typecheck + format check (run before every commit)
 - `pnpm lint` / `pnpm typecheck` / `pnpm format` (write) / `pnpm format:check` / `pnpm build`
-- `docker compose up -d db` — local Postgres only (host port 5435)
+- `pnpm docker:db` — local Postgres only (host port 5435)
 - `pnpm db:generate` / `pnpm db:migrate` / `pnpm db:studio` — this app's own schema (`prisma/app`)
 - `pnpm radius:pull` / `pnpm radius:generate` — sync `prisma/radius/schema.prisma` from the live daloRADIUS database (pull), or just regenerate the client after editing it by hand (generate). **Never** `prisma migrate` against the radius datasource — daloRADIUS's own SQL files own that schema.
 - Docker — one atomic script per action; combine with `&&` when you want more than one (e.g. rebuild `web-prod` without touching `db` or a tunnel: `pnpm docker:web-prod:build`):
   - `pnpm docker:db` — Postgres only
   - `pnpm docker:web:build` — build (if needed) and (re)start the dev container, hot reload, `:3000`
-  - `pnpm docker:web:restart` — restart the dev container without rebuilding (e.g. to pick up a `.env` change)
+  - `pnpm docker:web:recreate` — recreate the dev container without rebuilding the image, to pick up a `.env` change (`docker compose restart` does **not** reload `env_file` — only recreating the container does; verified empirically)
   - `pnpm docker:web:stop` — stop it
   - `pnpm docker:web-prod:build` — build (if needed) and (re)start the production image (the `runner` build target) — only one of `web`/`web-prod` can be up at a time, both bind `:3000`
-  - `pnpm docker:web-prod:restart` — restart it without rebuilding
+  - `pnpm docker:web-prod:recreate` — recreate it without rebuilding, to pick up a `.env` change
   - `pnpm docker:web-prod:stop` — stop it
   - `pnpm docker:tunnel` — quick ephemeral Cloudflare tunnel pointed at the dev container
   - `pnpm docker:tunnel-prod` — quick ephemeral Cloudflare tunnel pointed at `web-prod` (new random URL every restart — fine for a one-off test, never a real deployment since callback URLs would keep changing)
